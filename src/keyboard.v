@@ -54,6 +54,7 @@ localparam SEND_DATA    = 4'b0101;
 localparam SEND_PARITY  = 4'b0110;
 localparam RELEASE_DATA = 4'b0111;
 localparam WAIT_ACK     = 4'b1000;
+localparam SYNC_ERROR   = 4'b1001;
 
 // kbd scan codes / commands
 localparam LEFT_SHIFT   = 8'h12;
@@ -65,16 +66,18 @@ localparam OK_RESPONSE  = 8'hFA;
 localparam SET_LEDS     = 8'hED;
 
 // delay and timeout constants (adjust if not using a 10 MHz clock)
-localparam RESPONSE_TIMEOUT = 100000; // wait 10ms for command response before retrying
-localparam RTS_CLOCK_PERIOD = 1200;   // pull clock low for 120us during RTS handshake
-localparam RTS_DATA_PERIOD = 200;     // pull data low 20us before the clock is released
+localparam RESPONSE_TIMEOUT  = 100000;  // wait 10ms for command response before retrying
+localparam SYNC_CLOCK_PERIOD = 1200;    // pull clock low for 120us to re-sync with device
+localparam RTS_CLOCK_PERIOD  = 1200;    // pull clock low for 120us during RTS handshake
+localparam RTS_DATA_PERIOD   = 200;     // pull data low 20us before the clock is released
 
 reg [3:0] r_State = IDLE;
 reg [7:0] r_ScanCode = 0;
 reg [7:0] r_LastCode = 0;
 reg [7:0] r_Command = 0;
 reg [2:0] r_BitIndex = 0;
-reg [$clog2(RESPONSE_TIMEOUT)-1:0] r_Counter = 0;
+reg [$clog2(RESPONSE_TIMEOUT)-1:0] r_CommandCounter = 0;
+reg [$clog2(SYNC_CLOCK_PERIOD)-1:0] r_SyncCounter = 0;
 reg r_DataLine = 0;
 reg r_EnDataLine = 0;
 reg r_Shift = 0;
@@ -83,8 +86,8 @@ reg r_Ctrl = 0;
 reg r_ps2_clk = 0;
 reg r_ResponsePending = 0;
 
-assign io_ps2_clk = (r_State == REQ_TO_SEND) ? 1'b0 : 1'bz;
-assign i_ps2_clk = (r_State == REQ_TO_SEND) ? 1'b0 : io_ps2_clk;
+assign io_ps2_clk = ((r_State == REQ_TO_SEND) || (r_State == SYNC_ERROR)) ? 1'b0 : 1'bz;
+assign i_ps2_clk = ((r_State == REQ_TO_SEND) || (r_State == SYNC_ERROR)) ? 1'b0 : io_ps2_clk;
 
 assign io_ps2_data = (r_EnDataLine) ? r_DataLine : 1'bz;
 assign i_ps2_data = (r_EnDataLine) ? r_DataLine : io_ps2_data;
@@ -154,7 +157,7 @@ function automatic [7:0] to_ascii;
         8'h5A:   to_ascii = 8'h0D; // Return (CR+LF)
         8'h66:   to_ascii = 8'h08; // Backspace (BS)
         8'h76:   to_ascii = 8'h1B; // ESC
-        default: to_ascii = 8'h3F; // unknown key (return '?')
+        default: to_ascii = 8'h00; // unknown key (ignore)
       endcase
     end  
 endfunction
@@ -166,8 +169,7 @@ always @(posedge i_clk) begin
   if ((r_ps2_clk == 1'b1) && (w_ps2_clk == 1'b0)) begin
     case (r_State)
       IDLE: begin
-        if (w_ps2_data == 1'b0)
-          r_State <= READ_CODE;
+        r_State <= (w_ps2_data == 1'b0) ? READ_CODE : SYNC_ERROR;
       end
 
       READ_CODE: begin
@@ -181,23 +183,25 @@ always @(posedge i_clk) begin
       end
 
       PARITY_BIT: begin
-        if (~&r_ScanCode[7:4]) begin
+        if (w_ps2_data != ^r_ScanCode) begin
           if ((r_ScanCode == LEFT_SHIFT) || (r_ScanCode == RIGHT_SHIFT))
             r_Shift <= (r_LastCode != KEY_RELEASE);
           else if (r_ScanCode == CTRL)
             r_Ctrl <= (r_LastCode != KEY_RELEASE);
-          else if (r_ScanCode == CAPS_LOCK) begin
-            if (r_LastCode == KEY_RELEASE)
-              r_CapsLock <= ~r_CapsLock;
-          end else begin
+          else if ((r_ScanCode == CAPS_LOCK) && (r_LastCode == KEY_RELEASE))
+            r_CapsLock <= ~r_CapsLock;
+          else if (|to_ascii(r_ScanCode, r_Ctrl, r_Shift, r_CapsLock)) begin
             o_ascii_code <= to_ascii(r_ScanCode, r_Ctrl, r_Shift, r_CapsLock);
             if (r_LastCode == KEY_RELEASE)
               o_key_release <= 1'b1;
             else
               o_key_press <= 1'b1;
           end
+          r_State <= STOP_BIT;
+        end else begin
+          // wrong parity
+          r_State <= SYNC_ERROR;
         end
-        r_State <= STOP_BIT;
       end
 
       STOP_BIT: begin
@@ -212,7 +216,7 @@ always @(posedge i_clk) begin
             r_State <= REQ_TO_SEND;
             r_Command <= {5'b00000, r_CapsLock, 2'b00};
           end
-          r_Counter <= 0;
+          r_CommandCounter <= 0;
           r_ResponsePending <= 1'b0;
         end
       end
@@ -241,23 +245,30 @@ always @(posedge i_clk) begin
         r_State <= IDLE;
       end
     endcase
+  end else if (r_State == SYNC_ERROR) begin
+    if (r_SyncCounter < SYNC_CLOCK_PERIOD) begin
+      r_SyncCounter <= r_SyncCounter + 1;
+    end else begin
+      r_SyncCounter <= 0;
+      r_State <= IDLE;
+    end
   end else if (r_State == REQ_TO_SEND) begin
-    if (r_Counter < RTS_CLOCK_PERIOD) begin
-      r_Counter <= r_Counter + 1;
-      if (r_Counter == (RTS_CLOCK_PERIOD - RTS_DATA_PERIOD)) begin
+    if (r_CommandCounter < RTS_CLOCK_PERIOD) begin
+      r_CommandCounter <= r_CommandCounter + 1;
+      if (r_CommandCounter == (RTS_CLOCK_PERIOD - RTS_DATA_PERIOD)) begin
         r_EnDataLine <= 1'b1;
-        r_DataLine <= 1'b0;    
+        r_DataLine <= 1'b0;
       end 
     end else begin
-      r_Counter <= 0;
+      r_CommandCounter <= 0;
       r_State <= SEND_DATA;
       r_ResponsePending <= 1'b1;
     end
   end else if (r_ResponsePending) begin
-    if (r_Counter < RESPONSE_TIMEOUT) begin
-      r_Counter <= r_Counter + 1;
+    if (r_CommandCounter < RESPONSE_TIMEOUT) begin
+      r_CommandCounter <= r_CommandCounter + 1;
     end else begin
-      r_Counter <= 0;
+      r_CommandCounter <= 0;
       r_State <= REQ_TO_SEND;
       r_Command <= SET_LEDS;
     end
