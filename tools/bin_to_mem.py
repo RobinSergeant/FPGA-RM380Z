@@ -16,6 +16,7 @@ def main():
         epilog='NB by default the path of the first BIN file is used as the MEM filepath' \
                ' (with a .mem extension)')
     parser.add_argument('-o', dest='mem_file', help='output MEM filepath')
+    parser.add_argument('-m', dest='max_bytes', type=int, help='maximum number of bytes to read')
     parser.add_argument('input_files', nargs='+', metavar='bin_file', help='binary input file(s)')
     args = parser.parse_args()
 
@@ -27,7 +28,12 @@ def main():
     data = b''
     for bin_file in args.input_files:
         with open(bin_file, 'rb') as f:
-            data += f.read()
+            if args.max_bytes:
+                data += f.read(args.max_bytes - len(data))
+                if len(data) == args.max_bytes:
+                    break
+            else:
+                data += f.read()
 
     with open(mem_file, 'w', encoding='utf8') as f:
         for val in data:
