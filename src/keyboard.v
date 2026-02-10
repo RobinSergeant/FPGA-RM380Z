@@ -169,17 +169,14 @@ always @(posedge i_clk) begin
   if ((r_ps2_clk == 1'b1) && (w_ps2_clk == 1'b0)) begin
     case (r_State)
       IDLE: begin
+        r_ScanCode <= 8'b10000000;
         r_State <= (w_ps2_data == 1'b0) ? READ_CODE : SYNC_ERROR;
       end
 
       READ_CODE: begin
-        r_ScanCode[r_BitIndex] <= w_ps2_data;
-        if (r_BitIndex < 7)
-          r_BitIndex <= r_BitIndex + 1;
-        else begin
-          r_BitIndex <= 0;
+        r_ScanCode <= {w_ps2_data, r_ScanCode[7:1]};
+        if (r_ScanCode[0] == 1'b1)
           r_State <= PARITY_BIT;
-        end
       end
 
       PARITY_BIT: begin
@@ -188,8 +185,6 @@ always @(posedge i_clk) begin
             r_Shift <= (r_LastCode != KEY_RELEASE);
           else if (r_ScanCode == CTRL)
             r_Ctrl <= (r_LastCode != KEY_RELEASE);
-          else if ((r_ScanCode == CAPS_LOCK) && (r_LastCode == KEY_RELEASE))
-            r_CapsLock <= ~r_CapsLock;
           else if (|to_ascii(r_ScanCode, r_Ctrl, r_Shift, r_CapsLock)) begin
             o_ascii_code <= to_ascii(r_ScanCode, r_Ctrl, r_Shift, r_CapsLock);
             if (r_LastCode == KEY_RELEASE)
@@ -205,10 +200,11 @@ always @(posedge i_clk) begin
       end
 
       STOP_BIT: begin
-        r_State <= IDLE;
+        r_State <= (w_ps2_data == 1'b1) ? IDLE : SYNC_ERROR;
         r_LastCode <= r_ScanCode;
 
         if ((r_ScanCode == CAPS_LOCK) && (r_LastCode == KEY_RELEASE)) begin
+          r_CapsLock <= ~r_CapsLock;
           r_State <= REQ_TO_SEND;
           r_Command <= SET_LEDS;
         end else if (r_ScanCode == OK_RESPONSE) begin
@@ -225,10 +221,8 @@ always @(posedge i_clk) begin
         r_DataLine <= r_Command[r_BitIndex];
         if (r_BitIndex < 7)
           r_BitIndex <= r_BitIndex + 1;
-        else begin
-          r_BitIndex <= 0;
+        else
           r_State <= SEND_PARITY;
-        end
       end
       
       SEND_PARITY: begin
@@ -261,6 +255,7 @@ always @(posedge i_clk) begin
       end 
     end else begin
       r_CommandCounter <= 0;
+      r_BitIndex <= 0;
       r_State <= SEND_DATA;
       r_ResponsePending <= 1'b1;
     end
