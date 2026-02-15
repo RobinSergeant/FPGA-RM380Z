@@ -24,7 +24,7 @@ module display(
     input [7:0] i_attr_data,
     input [7:0] i_char_data,
     input [7:0] i_hrg_data,
-    output reg [10:0] o_vram_addr,
+    output [10:0] o_vram_addr,
     output reg [11:0] o_chargen_addr,
     output reg [13:0] o_hrg_addr,
     output [3:0] o_red,
@@ -97,7 +97,6 @@ reg [7:0] r_attr_val = 0;
 reg [6:0] r_cc_counter = 0;    // 80 columns
 reg [4:0] r_cr_counter = 0;    // 24 rows
 reg [4:0] r_scroll_counter = 0;
-reg [4:0] r_new_scroll_counter = 0;
 reg [2:0] r_px = 7;            // 8 pixel wide chars
 reg [4:0] r_py = 0;            // 20 (10*2) pixels high
 reg r_pixel_tog = 1'b1;        // use same data for 2 pixels in 40 col mode
@@ -109,37 +108,23 @@ always @(posedge i_clk) begin
     r_pixel_tog <= ~r_pixel_tog;
     if (r_mode80 || r_pixel_tog) begin
       if (r_px > 0) begin
-        case (r_px)
-          6: begin
-            if (r_cc_counter < (r_mode80 ? 79 : 39)) begin
-              r_cc_counter <= r_cc_counter + 1;
+        if (r_px == 7) begin
+          if (r_cc_counter < (r_mode80 ? 79 : 39)) begin
+            r_cc_counter <= r_cc_counter + 1;
+          end else begin
+            r_cc_counter <= 0;
+            if (r_py < 19) begin
+              r_py <= r_py + 1;
             end else begin
-              r_cc_counter <= 0;
-              if (r_py < 19) begin
-                r_py <= r_py + 1;
+              r_py <= 0;
+              if (r_cr_counter < 23) begin
+                r_cr_counter <= r_cr_counter + 1;
               end else begin
-                r_py <= 0;
-                if (r_cr_counter < 23) begin
-                  r_cr_counter <= r_cr_counter + 1;
-                end else begin
-                  r_cr_counter <= 0;
-                  r_scroll_counter <= r_new_scroll_counter;
-                end
+                r_cr_counter <= 0;
               end
-            end 
+            end
           end
-          5: begin
-            o_vram_addr <= vram_address(r_cr_counter, r_cc_counter, r_scroll_counter);
-          end
-          3: begin
-            if (i_attr_data[UNDERLINE] && (r_py >= 16)) begin
-              // underline attribute, use alternative data for last two rows
-              o_chargen_addr <= (i_char_code << 4) | (r_py >> 1) + 2;
-            end else begin
-              o_chargen_addr <= (i_char_code << 4) | (r_py >> 1);
-            end              
-          end
-        endcase
+        end
         r_px <= r_px - 1;
       end else begin
         r_px <= 7;
@@ -153,9 +138,20 @@ always @(posedge i_clk) begin
   end
 
   if (i_counter_valid) begin
-    r_new_scroll_counter <= i_counter;
+    r_scroll_counter <= i_counter;
   end
 end
+
+always @(*) begin
+  if (i_attr_data[UNDERLINE] && (r_py >= 16)) begin
+    // underline attribute, use alternative data for last two rows
+    o_chargen_addr = (i_char_code << 4) | (r_py >> 1) + 2;
+  end else begin
+    o_chargen_addr = (i_char_code << 4) | (r_py >> 1);
+  end   
+end
+
+assign o_vram_addr = vram_address(r_cr_counter, r_cc_counter, r_scroll_counter);
 
 /********************************************************************************
  *                                                                              *
@@ -201,7 +197,7 @@ always @(posedge i_clk) begin
       if (r_mode[1]) begin
         // medium res (shift every 4 pixels)
         if (r_hrg_pixel_no == 3)
-          r_hrg_byte <= r_hrg_byte >> 2;      
+          r_hrg_byte <= r_hrg_byte >> 2;
       end else begin
         // high res (shift every 2 pixels)
         if (r_hrg_pixel_no[0])
