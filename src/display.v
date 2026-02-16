@@ -91,7 +91,7 @@ localparam UNDERLINE  = 1;
 localparam DIM        = 2;
 localparam INVERSE    = 3;
 
-reg [11:0] r_vdu_out = 0;
+wire [11:0] w_vdu_out;
 reg [7:0] r_char_data = 0;
 reg [7:0] r_attr_val = 0;
 reg [6:0] r_cc_counter = 0;    // 80 columns
@@ -99,12 +99,11 @@ reg [4:0] r_cr_counter = 0;    // 24 rows
 reg [4:0] r_scroll_counter = 0;
 reg [2:0] r_px = 7;            // 8 pixel wide chars
 reg [4:0] r_py = 0;            // 20 (10*2) pixels high
-reg r_pixel_tog = 1'b1;        // use same data for 2 pixels in 40 col mode
+reg r_pixel_tog = 1'b0;        // use same data for 2 pixels in 40 col mode
 reg r_mode80 = 1'b0;           // don't repeat pixel data in 80 col mode
 
 always @(posedge i_clk) begin
   if (w_visible) begin
-    r_vdu_out <= (r_char_data[r_px] ^ r_attr_val[INVERSE]) ? (r_attr_val[DIM] ? GREY : WHITE) : BLACK;
     r_pixel_tog <= ~r_pixel_tog;
     if (r_mode80 || r_pixel_tog) begin
       if (r_px > 0) begin
@@ -130,11 +129,12 @@ always @(posedge i_clk) begin
         r_px <= 7;
         r_attr_val <= i_attr_data;
         r_char_data <= i_char_data;
-        if ((r_cc_counter == 0) && (r_cr_counter == 0) && (r_py == 0)) begin
-          r_mode80 <= i_mode80;
-        end
       end
     end
+  end else begin
+    r_attr_val <= i_attr_data;
+    r_char_data <= i_char_data;
+    r_mode80 <= i_mode80;
   end
 
   if (i_counter_valid) begin
@@ -152,6 +152,7 @@ always @(*) begin
 end
 
 assign o_vram_addr = vram_address(r_cr_counter, r_cc_counter, r_scroll_counter);
+assign w_vdu_out = (r_char_data[r_px] ^ r_attr_val[INVERSE]) ? (r_attr_val[DIM] ? GREY : WHITE) : BLACK;
 
 /********************************************************************************
  *                                                                              *
@@ -169,14 +170,14 @@ reg [7:0] r_hrg_port0 = 0;
 reg [7:0] r_hrg_port1 = 0;
 reg [7:0] r_scratchpad [0:15];
 reg [7:0] r_colour;
-reg [11:0] r_hrg_out = 0;
+reg [11:0] r_hrg_out;
 reg [9:0] r_hrg_xpos = 8;
 reg [8:0] r_hrg_ypos = 0;
-reg [2:0] r_hrg_pixel_no = 1;
+reg [2:0] r_hrg_pixel_no = 0;
 reg [7:0] r_hrg_byte;
 
-reg [8:0] w_hrg_x;
-reg [7:0] w_hrg_y;
+reg [8:0] r_hrg_x;
+reg [7:0] r_hrg_y;
 
 always @(posedge i_clk) begin
   if (w_visible) begin
@@ -204,12 +205,6 @@ always @(posedge i_clk) begin
           r_hrg_byte <= r_hrg_byte >> 2;
       end
       r_hrg_pixel_no <= r_hrg_pixel_no + 1;
-    end
-    r_colour = r_mode[1] ? r_scratchpad[{r_hrg_byte[5:4], r_hrg_byte[1:0]}] : r_scratchpad[r_hrg_byte[1:0]];
-    if ((r_hrg_ypos < 384) && r_mode) begin
-      r_hrg_out <= {r_colour[6], r_colour[3], r_colour[0], r_colour[6], r_colour[7], r_colour[5], r_colour[2], r_colour[7], r_colour[4], r_colour[1], r_colour[4], r_colour[1]};
-    end else begin
-      r_hrg_out <= BLACK;
     end
   end
 
@@ -239,22 +234,29 @@ end
 always @(*) begin
   if (r_mode[1]) begin
     // medium res, 4 real pixels for every hrg pixel
-    w_hrg_x = r_hrg_xpos >> 2;
-    w_hrg_y = r_hrg_ypos >> 2;
-    o_hrg_addr = (w_hrg_y[6:3] * 1280) + {w_hrg_x[7:1], w_hrg_y[2:0], r_mode[0]};
+    r_hrg_x = r_hrg_xpos >> 2;
+    r_hrg_y = r_hrg_ypos >> 2;
+    o_hrg_addr = (r_hrg_y[6:3] * 1280) + {r_hrg_x[7:1], r_hrg_y[2:0], r_mode[0]};
   end else begin
     // high res, 2 real pixels for every hrg pixel
-    w_hrg_x = r_hrg_xpos >> 1;
-    w_hrg_y = r_hrg_ypos >> 1;
-    o_hrg_addr = (w_hrg_y[7:4] * 1280) + {w_hrg_x[8:2], w_hrg_y[3:0]};
+    r_hrg_x = r_hrg_xpos >> 1;
+    r_hrg_y = r_hrg_ypos >> 1;
+    o_hrg_addr = (r_hrg_y[7:4] * 1280) + {r_hrg_x[8:2], r_hrg_y[3:0]};
+  end
+
+  r_colour = r_mode[1] ? r_scratchpad[{r_hrg_byte[5:4], r_hrg_byte[1:0]}] : r_scratchpad[r_hrg_byte[1:0]];
+  if ((r_hrg_ypos < 384) && r_mode) begin
+    r_hrg_out = {r_colour[6], r_colour[3], r_colour[0], r_colour[6], r_colour[7], r_colour[5], r_colour[2], r_colour[7], r_colour[4], r_colour[1], r_colour[4], r_colour[1]};
+  end else begin
+    r_hrg_out = BLACK;
   end
 end
 
 assign w_visible = (r_col_counter < VISIBLE_COLS) && (r_row_counter < VISIBLE_ROWS);
 
-assign o_red = (w_visible) ? r_vdu_out[11:8] | r_hrg_out[11:8] : 4'b0000;
-assign o_green = (w_visible) ? r_vdu_out[7:4] | r_hrg_out[7:4] : 4'b0000;
-assign o_blue = (w_visible) ? r_vdu_out[3:0] | r_hrg_out[3:0] : 4'b0000;
+assign o_red = (w_visible) ? w_vdu_out[11:8] | r_hrg_out[11:8] : 4'b0000;
+assign o_green = (w_visible) ? w_vdu_out[7:4] | r_hrg_out[7:4] : 4'b0000;
+assign o_blue = (w_visible) ? w_vdu_out[3:0] | r_hrg_out[3:0] : 4'b0000;
 
 assign o_hsync = ((r_col_counter >= HSYNC_START) && (r_col_counter <= HSYNC_END)) ? 1'b0 : 1'b1;
 assign o_vsync = ((r_row_counter >= VSYNC_START) && (r_row_counter <= VSYNC_END)) ? 1'b0 : 1'b1;
