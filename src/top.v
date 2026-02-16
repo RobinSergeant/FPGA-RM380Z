@@ -4,26 +4,35 @@
  *                                                                              *
  * Top module                                                                   *
  *                                                                              *
+ * This module glues all the other modules together and handles the CPU I/O.    *
+ *                                                                              *
  ********************************************************************************/
 
 `timescale 1ns / 1ps
 
 module top(
-    input clk,
-    inout PS2Clk,
-    inout PS2Data,
-    input btnU,
-    output [3:0] vgaRed,
-    output [3:0] vgaGreen,
-    output [3:0] vgaBlue,
-    output Hsync,
-    output Vsync
-    );
+  input clk,
+  inout PS2Clk,
+  inout PS2Data,
+  input btnU,
+  output [3:0] vgaRed,
+  output [3:0] vgaGreen,
+  output [3:0] vgaBlue,
+  output Hsync,
+  output Vsync
+);
 
 `include "common.vh"
 
-wire w_high;
-wire w_low;
+/********************************************************************************
+ *                                                                              *
+ * Clock generator and reset                                                    *
+ *                                                                              *
+ * Vivado Clocking Wizard used to generate clocks:                              *
+ *   clk_vga (requested: 25.175, actual: 25.17483)                              *
+ *   clk_cpu (requested: 10, actual 10.00000)                                   *
+ *                                                                              *
+ ********************************************************************************/
 
 wire w_reset_button;
 
@@ -37,16 +46,15 @@ wire w_clk_vga;
 wire w_clk_cpu;
 wire w_locked;
 
-clock_generator clock_inst
-   (
-    // Clock out ports
-    .clk_vga(w_clk_vga),     // output clk_vga
-    .clk_cpu(w_clk_cpu),     // output clk_cpu
-    // Status and control signals
-    .reset(w_reset_button), // input reset
-    .locked(w_locked),       // output locked
-   // Clock in ports
-    .clk_in1(clk)      // input clk_in
+clock_generator clock_inst (
+  // Clock out ports
+  .clk_vga(w_clk_vga),     // output clk_vga
+  .clk_cpu(w_clk_cpu),     // output clk_cpu
+  // Status and control signals
+  .reset(w_reset_button),  // input reset
+  .locked(w_locked),       // output locked
+ // Clock in ports
+  .clk_in1(clk)            // input clk_in
 );
 
 wire w_cpu_reset;
@@ -58,12 +66,18 @@ xpm_cdc_async_rst #(
 )
 xpm_cdc_async_rst_inst_cpu (
   .dest_arst(w_cpu_reset), // 1-bit output: src_arst asynchronous reset signal synchronized to destination clock domain. This output is registered.
-                         // NOTE: Signal asserts asynchronously but deasserts synchronously to dest_clk. Width of the reset signal is at least
-                         // (DEST_SYNC_FF*dest_clk) period.
+                           // NOTE: Signal asserts asynchronously but deasserts synchronously to dest_clk. Width of the reset signal is at least
+                           // (DEST_SYNC_FF*dest_clk) period.
 
-  .dest_clk(w_clk_cpu),   // 1-bit input: Destination clock.
-  .src_arst(w_locked)    // 1-bit input: Source asynchronous reset signal.
+  .dest_clk(w_clk_cpu),    // 1-bit input: Destination clock.
+  .src_arst(w_locked)      // 1-bit input: Source asynchronous reset signal.
 );
+
+/********************************************************************************
+ *                                                                              *
+ * Display and assoicated memory                                                *
+ *                                                                              *
+ ********************************************************************************/
 
 wire [10:0] w_vram_addra;
 wire [11:0] w_chargen_addra;
@@ -168,6 +182,12 @@ display display_inst (
   .o_vsync(w_vsync)
 );
 
+/********************************************************************************
+ *                                                                              *
+ * Keyboard and floppy controller                                               *
+ *                                                                              *
+ ********************************************************************************/
+
 wire [7:0] w_kbd_code;
 wire w_key_press;
 
@@ -193,6 +213,12 @@ fd1771 fd1771_inst (
   .DAL(w_fdc_DAL)
 );
 
+/********************************************************************************
+ *                                                                              *
+ * CPU and RAM/ROM                                                              *
+ *                                                                              *
+ ********************************************************************************/
+
 wire w_MREQ;
 wire w_IORQ;
 wire w_RD;
@@ -201,6 +227,7 @@ wire w_RESET;
 wire w_WAIT;
 wire w_M1;
 wire w_NMI;
+wire w_high;
 
 wire [15:0] w_A;
 wire [7:0] w_D;
@@ -208,24 +235,24 @@ reg [7:0] r_Dout;
 reg r_M1 = 1'b1;
 
 z80_top_direct_n z80_instance (
-    .nM1(w_M1),
-    .nMREQ(w_MREQ),
-    .nIORQ(w_IORQ),
-    .nRD(w_RD),
-    .nWR(w_WR),
-    .nRFSH(),
-    .nHALT(),
-    .nBUSACK(),
+  .nM1(w_M1),
+  .nMREQ(w_MREQ),
+  .nIORQ(w_IORQ),
+  .nRD(w_RD),
+  .nWR(w_WR),
+  .nRFSH(),
+  .nHALT(),
+  .nBUSACK(),
 
-    .nWAIT(w_WAIT),
-    .nINT(w_high),
-    .nNMI(w_NMI),
-    .nRESET(w_RESET),
-    .nBUSRQ(w_high),
+  .nWAIT(w_WAIT),
+  .nINT(w_high),
+  .nNMI(w_NMI),
+  .nRESET(w_RESET),
+  .nBUSRQ(w_high),
 
-    .CLK(w_clk_cpu),
-    .A(w_A),
-    .D(w_D)
+  .CLK(w_clk_cpu),
+  .A(w_A),
+  .D(w_D)
 );
 
 wire [7:0] w_rom_dout;
@@ -233,9 +260,9 @@ wire [12:0] w_rom_addr;
 reg [12:0] r_rom_addr;
 
 single_port_rom #(.DEPTH(5632), .INIT_FILE("combined_roms.mem")) rom_inst (
-  .clka(w_clk_cpu),    // input wire clka
-  .addra(w_rom_addr),  // input wire [12 : 0] addra
-  .douta(w_rom_dout)  // output wire [7 : 0] douta
+  .clka(w_clk_cpu),
+  .addra(w_rom_addr),
+  .douta(w_rom_dout)
 );
 
 wire w_ram_we;
@@ -252,6 +279,15 @@ single_port_ram #(.DEPTH(65536)) ram_inst (
   .dina(w_ram_din),
   .douta(w_ram_dout)
 );
+
+/********************************************************************************
+ *                                                                              *
+ * Clock Domain Crossing shenanigans                                            *
+ *                                                                              *
+ * The following xpm_cdc macros are used to safely transfer signals and data    *
+ * between the CPU and VGA clock domains.                                       *
+ *                                                                              *
+ ********************************************************************************/
 
 xpm_cdc_single #(
   .DEST_SYNC_FF(2),   // DECIMAL; range: 2-10
@@ -391,6 +427,12 @@ xpm_cdc_handshake_port1_inst (
                        // destination logic.
  );
 
+/********************************************************************************
+ *                                                                              *
+ * Handle writes to memory mapped ports                                         *
+ *                                                                              *
+ ********************************************************************************/
+
 reg [7:0] r_port0 = 0;
 reg [7:0] r_hrg_port0 = 0;
 reg [7:0] r_hrg_port0_out = 0;
@@ -475,6 +517,12 @@ always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
   end
 end
 
+/********************************************************************************
+ *                                                                              *
+ * Implement memory map and port reads                                          *
+ *                                                                              *
+ ********************************************************************************/
+
 always @(*) begin
   r_Dout = w_rom_dout;
   r_rom_addr = w_A;
@@ -552,7 +600,6 @@ assign w_ram_we = r_ram_we && (w_MREQ == 1'b0) && (w_WR == 1'b0);
 assign w_ram_din = w_D;
 
 assign w_high = 1'b1;
-assign w_low = 1'b0;
 assign w_RESET = w_cpu_reset;
 assign w_WAIT = 1'b1;
 assign w_NMI = ~r_nmi_counter[3];

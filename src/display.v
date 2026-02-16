@@ -12,27 +12,27 @@
 `timescale 1ns / 1ps
 
 module display(
-    input i_clk,
-    input i_mode80,
-    input i_counter_valid,
-    input i_hrg_port0_valid,
-    input i_hrg_port1_valid,
-    input [4:0] i_counter,
-    input [7:0] i_hrg_port0,
-    input [7:0] i_hrg_port1,
-    input [7:0] i_char_code,
-    input [7:0] i_attr_data,
-    input [7:0] i_char_data,
-    input [7:0] i_hrg_data,
-    output [10:0] o_vram_addr,
-    output reg [11:0] o_chargen_addr,
-    output reg [13:0] o_hrg_addr,
-    output [3:0] o_red,
-    output [3:0] o_green,
-    output [3:0] o_blue,
-    output o_hsync,
-    output o_vsync
-    );
+  input i_clk,
+  input i_mode80,
+  input i_counter_valid,
+  input i_hrg_port0_valid,
+  input i_hrg_port1_valid,
+  input [4:0] i_counter,
+  input [7:0] i_hrg_port0,
+  input [7:0] i_hrg_port1,
+  input [7:0] i_char_code,
+  input [7:0] i_attr_data,
+  input [7:0] i_char_data,
+  input [7:0] i_hrg_data,
+  output [10:0] o_vram_addr,
+  output reg [11:0] o_chargen_addr,
+  output reg [13:0] o_hrg_addr,
+  output [3:0] o_red,
+  output [3:0] o_green,
+  output [3:0] o_blue,
+  output o_hsync,
+  output o_vsync
+);
 
 `include "common.vh"
 
@@ -75,9 +75,24 @@ always @(posedge i_clk) begin
   end
 end
 
+assign w_visible = (r_col_counter < VISIBLE_COLS) && (r_row_counter < VISIBLE_ROWS);
+
 /********************************************************************************
  *                                                                              *
  * VDU-80 character display                                                     *
+ *                                                                              *
+ * Both 40 and 80 column display modes are supported, each with 24 rows.        *
+ * Characters are 8 pixels wide and 10 pixels deep in both modes.               *
+ *                                                                              *
+ * Pixels are stretched verticaly by a factor of two (each row of pixels is     *
+ * is repeated so that 240 pixels occupy the full 480 vga pixel height).        *
+ * In 40 column mode pixels are also stretched horizontally (each column of     *
+ * pixels is repeated so that 320 pixels occupy the full 640 vga pixel width).  *
+ *                                                                              *
+ * Each display characters has an associated attribute byte to control it's     *
+ * appearance.  Supported attributes include underline, dim, and inverse.  The  *
+ * underline attribute changes the character generator address for the the last *
+ * two rows (selecting rows and 11 and 12 to replace row 9 and 10).             *
  *                                                                              *
  ********************************************************************************/
 
@@ -108,6 +123,7 @@ always @(posedge i_clk) begin
     if (r_mode80 || r_pixel_tog) begin
       if (r_px > 0) begin
         if (r_px == 7) begin
+          // read ahead and fetch data for next character row
           if (r_cc_counter < (r_mode80 ? 79 : 39)) begin
             r_cc_counter <= r_cc_counter + 1;
           end else begin
@@ -126,6 +142,7 @@ always @(posedge i_clk) begin
         end
         r_px <= r_px - 1;
       end else begin
+        // get ready to draw the next character row
         r_px <= 7;
         r_attr_val <= i_attr_data;
         r_char_data <= i_char_data;
@@ -158,6 +175,13 @@ assign w_vdu_out = (r_char_data[r_px] ^ r_attr_val[INVERSE]) ? (r_attr_val[DIM] 
  *                                                                              *
  * HRG (High Resolution Graphics) display                                       *
  *                                                                              *
+ * Two graphics modes are provided by the HRG card:                             *
+ *   1) High res (4 colours, 320x192)                                           *
+ *   2) Medium res (16 colours, 160x96 with two pages)                          *
+ *                                                                              *
+ * Both are stretched to a VGA resolution of 640x384 and shown at the top of    *
+ * the screen (the lower 96 pixels are black / not used for HRG).               *
+ *                                                                              *
  ********************************************************************************/
 
 localparam MODE_NONE = 4'b00;
@@ -182,8 +206,10 @@ reg [7:0] r_hrg_y;
 always @(posedge i_clk) begin
   if (w_visible) begin
     if (r_hrg_pixel_no == 7) begin
+      // start displaying the next byte
       r_hrg_byte <= i_hrg_data;
       r_hrg_pixel_no <= 0;
+      // read ahead 8 pixels to get a new byte
       if (r_hrg_xpos == 632) begin
         r_hrg_xpos <= 0;
         if (r_hrg_ypos == 479) begin
@@ -216,10 +242,13 @@ always @(posedge i_clk) begin
       8'hC3: r_mode <= MODE_MED1;
     endcase
 
+    // update scrachdpad (colour palette)
     if (!r_hrg_port0[0] && i_hrg_port0[0]) begin
+      // bit 0 toggled, update low nibble 
       r_scratchpad[r_hrg_port1[7:4]][3:0] <= r_hrg_port1[3:0];
     end
     if (!r_hrg_port0[1] && i_hrg_port0[1]) begin
+      // bit 1 toggled, update high nibble
       r_scratchpad[r_hrg_port1[7:4]][7:4] <= r_hrg_port1[3:0];
     end
 
@@ -251,8 +280,6 @@ always @(*) begin
     r_hrg_out = BLACK;
   end
 end
-
-assign w_visible = (r_col_counter < VISIBLE_COLS) && (r_row_counter < VISIBLE_ROWS);
 
 assign o_red = (w_visible) ? w_vdu_out[11:8] | r_hrg_out[11:8] : 4'b0000;
 assign o_green = (w_visible) ? w_vdu_out[7:4] | r_hrg_out[7:4] : 4'b0000;

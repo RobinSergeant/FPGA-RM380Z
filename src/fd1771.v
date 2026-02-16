@@ -20,12 +20,12 @@
 `timescale 1ns / 1ps
 
 module fd1771(
-    input CLK,
-    input WE,
-    input RE,
-    input [1:0] A,
-    inout [7:0] DAL
-    );
+  input CLK,
+  input WE,
+  input RE,
+  input [1:0] A,
+  inout [7:0] DAL
+);
 
 wire [16:0] w_floppy_addr;
 wire [7:0] w_floppy_din;
