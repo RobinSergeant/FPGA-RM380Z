@@ -75,7 +75,7 @@ xpm_cdc_async_rst_inst_cpu (
 
 /********************************************************************************
  *                                                                              *
- * Display and assoicated memory                                                *
+ * Display and associated memory                                                *
  *                                                                              *
  ********************************************************************************/
 
@@ -156,7 +156,9 @@ wire w_dst_hrg_port1_valid;
 wire [7:0] w_hrg_port1_dst;
 wire w_hsync;
 wire w_vsync;
+wire w_hblank_in;
 wire w_hblank;
+wire w_vblank_in;
 wire w_vblank;
 
 display display_inst (
@@ -179,7 +181,9 @@ display display_inst (
   .o_green(vgaGreen),
   .o_blue(vgaBlue),
   .o_hsync(w_hsync),
-  .o_vsync(w_vsync)
+  .o_vsync(w_vsync),
+  .o_hblank(w_hblank_in),
+  .o_vblank(w_vblank_in)
 );
 
 /********************************************************************************
@@ -309,10 +313,10 @@ xpm_cdc_single #(
   .SRC_INPUT_REG(0)   // DECIMAL; 0=do not register input, 1=register input
 )
 xpm_cdc_single_hsync_inst (
-  .dest_out(w_hblank), // 1-bit output: src_in synchronized to the destination clock domain. This output is registered.
+  .dest_out(w_hblank),  // 1-bit output: src_in synchronized to the destination clock domain. This output is registered.
   .dest_clk(w_clk_cpu), // 1-bit input: Clock signal for the destination clock domain.
-  .src_clk(w_clk_vga),   // 1-bit input: optional; required when SRC_INPUT_REG = 1
-  .src_in(w_hsync)      // 1-bit input: Input signal to be synchronized to dest_clk domain.
+  .src_clk(w_clk_vga),  // 1-bit input: optional; required when SRC_INPUT_REG = 1
+  .src_in(w_hblank_in)  // 1-bit input: Input signal to be synchronized to dest_clk domain.
 );
 
 xpm_cdc_single #(
@@ -322,10 +326,10 @@ xpm_cdc_single #(
   .SRC_INPUT_REG(0)   // DECIMAL; 0=do not register input, 1=register input
 )
 xpm_cdc_single_vsync_inst (
-  .dest_out(w_vblank), // 1-bit output: src_in synchronized to the destination clock domain. This output is registered.
+  .dest_out(w_vblank),  // 1-bit output: src_in synchronized to the destination clock domain. This output is registered.
   .dest_clk(w_clk_cpu), // 1-bit input: Clock signal for the destination clock domain.
-  .src_clk(w_clk_vga),   // 1-bit input: optional; required when SRC_INPUT_REG = 1
-  .src_in(w_vsync)      // 1-bit input: Input signal to be synchronized to dest_clk domain.
+  .src_clk(w_clk_vga),  // 1-bit input: optional; required when SRC_INPUT_REG = 1
+  .src_in(w_vblank_in)  // 1-bit input: Input signal to be synchronized to dest_clk domain.
 );
 
 wire w_counter_src_send;

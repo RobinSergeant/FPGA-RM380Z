@@ -31,7 +31,9 @@ module display(
   output [3:0] o_green,
   output [3:0] o_blue,
   output o_hsync,
-  output o_vsync
+  output o_vsync,
+  output o_hblank,
+  output o_vblank
 );
 
 `include "common.vh"
@@ -273,6 +275,9 @@ always @(*) begin
     o_hrg_addr = (r_hrg_y[7:4] * 1280) + {r_hrg_x[8:2], r_hrg_y[3:0]};
   end
 
+  // NB the scratch pad stores 8-bit colour in the following format:
+  // GRGBRGBR   (3 bits for red and green, only 2 bits for blue)
+  // 22111000   (bits 7, 5, and 2 form green etc.)
   r_colour = r_mode[1] ? r_scratchpad[{r_hrg_byte[5:4], r_hrg_byte[1:0]}] : r_scratchpad[r_hrg_byte[1:0]];
   if ((r_hrg_ypos < 384) && r_mode) begin
     r_hrg_out = {r_colour[6], r_colour[3], r_colour[0], r_colour[6], r_colour[7], r_colour[5], r_colour[2], r_colour[7], r_colour[4], r_colour[1], r_colour[4], r_colour[1]};
@@ -287,5 +292,8 @@ assign o_blue = (w_visible) ? w_vdu_out[3:0] | r_hrg_out[3:0] : 4'b0000;
 
 assign o_hsync = ((r_col_counter >= HSYNC_START) && (r_col_counter <= HSYNC_END)) ? 1'b0 : 1'b1;
 assign o_vsync = ((r_row_counter >= VSYNC_START) && (r_row_counter <= VSYNC_END)) ? 1'b0 : 1'b1;
+
+assign o_hblank = (r_col_counter >= VISIBLE_COLS);
+assign o_vblank = (r_row_counter >= VISIBLE_ROWS);
 
 endmodule
