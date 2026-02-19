@@ -12,7 +12,7 @@ Features:
   - User defined characters.
   - Character attributes (inverse, dim and underline).
   - Hardware scrolling.
-- HRG (High Resolution Graphis):
+- HRG (High Resolution Graphics):
   - High res mode (4 colours, 320x192).
   - Medium res mode (16 colours, 160x96 with two pages).
   - Upscaled to 640x384 for display (lower 96 pixels are/were only used by the VDU-80).
