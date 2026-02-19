@@ -23,7 +23,7 @@ module keyboard(
   input i_clk,
   inout io_ps2_clk,
   inout io_ps2_data,
-  output reg [7:0] o_ascii_code,
+  output reg [6:0] o_ascii_code,
   output reg o_key_press,
   output reg o_key_release
 );
@@ -65,6 +65,9 @@ localparam KEY_RELEASE  = 8'hF0;
 localparam OK_RESPONSE  = 8'hFA;
 localparam SET_LEDS     = 8'hED;
 
+// ascii codes
+localparam NOKEY        = 8'h80;
+
 // delay and timeout constants (adjust if not using a 10 MHz clock)
 localparam RESPONSE_TIMEOUT  = 100000;  // wait 10ms for command response before retrying
 localparam SYNC_CLOCK_PERIOD = 1200;    // pull clock low for 120us to re-sync with device
@@ -75,6 +78,7 @@ reg [3:0] r_State = IDLE;
 reg [7:0] r_ScanCode = 0;
 reg [7:0] r_LastCode = 0;
 reg [7:0] r_Command = 0;
+reg [7:0] r_toAscii_result;
 reg [2:0] r_BitIndex = 0;
 reg [$clog2(RESPONSE_TIMEOUT)-1:0] r_CommandCounter = 0;
 reg [$clog2(SYNC_CLOCK_PERIOD)-1:0] r_SyncCounter = 0;
@@ -129,35 +133,37 @@ function automatic [7:0] to_ascii;
       8'h1A:   to_ascii = (ctrl) ? 8'd26 : (shift ^ caps) ? 8'h5A : 8'h7a;
 
       // Number keys (0-9)
-      8'h16:   to_ascii = (shift) ? 8'h21 : 8'h31;
-      8'h1E:   to_ascii = (shift) ? 8'h22 : 8'h32;
-      8'h26:   to_ascii = (shift) ? 8'h23 : 8'h33;
-      8'h25:   to_ascii = (shift) ? 8'h24 : 8'h34;
-      8'h2E:   to_ascii = (shift) ? 8'h25 : 8'h35;
-      8'h36:   to_ascii = (shift) ? 8'h5E : 8'h36;
-      8'h3D:   to_ascii = (shift) ? 8'h26 : 8'h37;
-      8'h3E:   to_ascii = (shift) ? 8'h2A : 8'h38;
-      8'h46:   to_ascii = (shift) ? 8'h28 : 8'h39;
-      8'h45:   to_ascii = (shift) ? 8'h29 : 8'h30;
+      8'h16:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h21 : 8'h31;   // 1 and !
+      8'h1E:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h22 : 8'h32;   // 2 and "
+      8'h26:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h23 : 8'h33;   // 3 and #
+      8'h25:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h24 : 8'h34;   // 4 and $
+      8'h2E:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h25 : 8'h35;   // 5 and %
+      8'h36:   to_ascii = (ctrl) ? 8'd30 : (shift) ? 8'h5E : 8'h36;   // 6 and ^
+      8'h3D:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h26 : 8'h37;   // 7 and &
+      8'h3E:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h2A : 8'h38;   // 8 and *
+      8'h46:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h28 : 8'h39;   // 9 and (
+      8'h45:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h29 : 8'h30;   // 0 and )
 
       // Punctuation and other keys
-      8'h4E:   to_ascii = (shift) ? 8'h5F : 8'h2D;
-      8'h55:   to_ascii = (shift) ? 8'h2B : 8'h3D;
-      8'h54:   to_ascii = (shift) ? 8'h7B : 8'h5B;
-      8'h5B:   to_ascii = (shift) ? 8'h7D : 8'h5D;
-      8'h5D:   to_ascii = (shift) ? 8'h7C : 8'h23;
-      8'h4C:   to_ascii = (shift) ? 8'h3A : 8'h3B;
-      8'h52:   to_ascii = (shift) ? 8'h40 : 8'h27;
-      8'h41:   to_ascii = (shift) ? 8'h3C : 8'h2C;
-      8'h49:   to_ascii = (shift) ? 8'h3E : 8'h2E;
-      8'h4A:   to_ascii = (shift) ? 8'h3F : 8'h2F;
-      8'h29:   to_ascii = 8'h20; // Spacebar
+      8'h4E:   to_ascii = (ctrl) ? 8'd31 : (shift) ? 8'h5F : 8'h2D;   // - and _
+      8'h55:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h2B : 8'h3D;   // = and +
+      8'h54:   to_ascii = (ctrl) ? 8'd27 : (shift) ? 8'h7B : 8'h5B;   // [ and {
+      8'h5B:   to_ascii = (ctrl) ? 8'd29 : (shift) ? 8'h7D : 8'h5D;   // ] and }
+      8'h5D:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h7E : 8'h23;   // # and ~
+      8'h4C:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h3A : 8'h3B;   // ; and :
+      8'h52:   to_ascii = (ctrl) ? 8'd00 : (shift) ? 8'h40 : 8'h27;   // ' and @
+      8'h41:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h3C : 8'h2C;   // , and <
+      8'h49:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h3E : 8'h2E;   // . and >
+      8'h4A:   to_ascii = (ctrl) ? NOKEY : (shift) ? 8'h3F : 8'h2F;   // / and ?
+      8'h61:   to_ascii = (ctrl) ? 8'd28 : (shift) ? 8'h7C : 8'h5C;   // \ and |
+      8'h0E:   to_ascii = (ctrl) ? NOKEY : (shift) ? NOKEY : 8'h60;   // `
 
-      // Special keys (Return, Backspace)
-      8'h5A:   to_ascii = 8'h0D; // Return (CR+LF)
-      8'h66:   to_ascii = 8'h08; // Backspace (BS)
-      8'h76:   to_ascii = 8'h1B; // ESC
-      default: to_ascii = 8'h00; // unknown key (ignore)
+      // Special keys
+      8'h29:   to_ascii = 8'h20;  // Spacebar
+      8'h5A:   to_ascii = 8'h0D;  // Return (CR+LF)
+      8'h66:   to_ascii = 8'h7F;  // Backspace (BS+DEL)
+      8'h76:   to_ascii = 8'h1B;  // ESC
+      default: to_ascii = NOKEY;  // unknown key (ignore)
     endcase
   end  
 endfunction
@@ -185,12 +191,15 @@ always @(posedge i_clk) begin
             r_Shift <= (r_LastCode != KEY_RELEASE);
           else if (r_ScanCode == CTRL)
             r_Ctrl <= (r_LastCode != KEY_RELEASE);
-          else if (|to_ascii(r_ScanCode, r_Ctrl, r_Shift, r_CapsLock)) begin
-            o_ascii_code <= to_ascii(r_ScanCode, r_Ctrl, r_Shift, r_CapsLock);
-            if (r_LastCode == KEY_RELEASE)
-              o_key_release <= 1'b1;
-            else
-              o_key_press <= 1'b1;
+          else begin
+            r_toAscii_result = to_ascii(r_ScanCode, r_Ctrl, r_Shift, r_CapsLock);
+            if (!r_toAscii_result[7]) begin
+              o_ascii_code <= r_toAscii_result[6:0];
+              if (r_LastCode == KEY_RELEASE)
+                o_key_release <= 1'b1;
+              else
+                o_key_press <= 1'b1;
+            end
           end
           r_State <= STOP_BIT;
         end else begin

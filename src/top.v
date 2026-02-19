@@ -192,7 +192,7 @@ display display_inst (
  *                                                                              *
  ********************************************************************************/
 
-wire [7:0] w_kbd_code;
+wire [6:0] w_kbd_code;
 wire w_key_press;
 
 keyboard keyboard_inst (
@@ -543,7 +543,7 @@ always @(*) begin
     if ((w_A[15:8] == 8'hFB) || ((w_A[15:8] == 8'h1B) && !r_port0[7])) begin
       case (w_A[7:0])
         8'h00: r_Dout = {{6{1'b1}}, ~w_hblank, ~w_vblank};
-        8'hFC: r_Dout = w_kbd_code;
+        8'hFC: r_Dout = {1'b0, w_kbd_code};
         8'hFD: r_Dout = w_chargen_douta;
         8'hFE: r_Dout = {w_hblank, w_vblank, {5{1'b0}}, r_key_ready};
         default: r_Dout = 0;
