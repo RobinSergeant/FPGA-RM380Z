@@ -27,13 +27,13 @@ module display(
   output [10:0] o_vram_addr,
   output reg [11:0] o_chargen_addr,
   output reg [13:0] o_hrg_addr,
-  output [3:0] o_red,
-  output [3:0] o_green,
-  output [3:0] o_blue,
-  output o_hsync,
-  output o_vsync,
-  output o_hblank,
-  output o_vblank
+  output reg [3:0] o_red,
+  output reg [3:0] o_green,
+  output reg [3:0] o_blue,
+  output reg o_hsync,
+  output reg o_vsync,
+  output reg o_hblank,
+  output reg o_vblank
 );
 
 `include "common.vh"
@@ -286,14 +286,16 @@ always @(*) begin
   end
 end
 
-assign o_red = (w_visible) ? w_vdu_out[11:8] | r_hrg_out[11:8] : 4'b0000;
-assign o_green = (w_visible) ? w_vdu_out[7:4] | r_hrg_out[7:4] : 4'b0000;
-assign o_blue = (w_visible) ? w_vdu_out[3:0] | r_hrg_out[3:0] : 4'b0000;
+always @(posedge i_clk) begin
+o_red   <= (w_visible) ? w_vdu_out[11:8] | r_hrg_out[11:8] : 4'b0000;
+o_green <= (w_visible) ? w_vdu_out[7:4]  | r_hrg_out[7:4]  : 4'b0000;
+o_blue  <= (w_visible) ? w_vdu_out[3:0]  | r_hrg_out[3:0]  : 4'b0000;
 
-assign o_hsync = ((r_col_counter >= HSYNC_START) && (r_col_counter <= HSYNC_END)) ? 1'b0 : 1'b1;
-assign o_vsync = ((r_row_counter >= VSYNC_START) && (r_row_counter <= VSYNC_END)) ? 1'b0 : 1'b1;
+o_hsync <= ((r_col_counter >= HSYNC_START) && (r_col_counter <= HSYNC_END)) ? 1'b0 : 1'b1;
+o_vsync <= ((r_row_counter >= VSYNC_START) && (r_row_counter <= VSYNC_END)) ? 1'b0 : 1'b1;
 
-assign o_hblank = (r_col_counter >= VISIBLE_COLS);
-assign o_vblank = (r_row_counter >= VISIBLE_ROWS);
+o_hblank <= (r_col_counter >= VISIBLE_COLS);
+o_vblank <= (r_row_counter >= VISIBLE_ROWS);
+end
 
 endmodule
