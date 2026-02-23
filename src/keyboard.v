@@ -24,8 +24,7 @@ module keyboard(
   inout io_ps2_clk,
   inout io_ps2_data,
   output reg [6:0] o_ascii_code,
-  output reg o_key_press,
-  output reg o_key_release
+  output reg o_key_press
 );
 
 wire i_ps2_clk;
@@ -169,7 +168,6 @@ function automatic [7:0] to_ascii;
 endfunction
 
 always @(posedge i_clk) begin
-  o_key_release <= 1'b0;
   o_key_press <= 1'b0;
 
   if ((r_ps2_clk == 1'b1) && (w_ps2_clk == 1'b0)) begin
@@ -191,14 +189,11 @@ always @(posedge i_clk) begin
             r_Shift <= (r_LastCode != KEY_RELEASE);
           else if (r_ScanCode == CTRL)
             r_Ctrl <= (r_LastCode != KEY_RELEASE);
-          else begin
+          else if (r_LastCode != KEY_RELEASE) begin
             r_toAscii_result = to_ascii(r_ScanCode, r_Ctrl, r_Shift, r_CapsLock);
             if (!r_toAscii_result[7]) begin
               o_ascii_code <= r_toAscii_result[6:0];
-              if (r_LastCode == KEY_RELEASE)
-                o_key_release <= 1'b1;
-              else
-                o_key_press <= 1'b1;
+              o_key_press <= 1'b1;
             end
           end
           r_State <= STOP_BIT;
@@ -284,7 +279,6 @@ end
 initial begin
   o_ascii_code = 8'h00;
   o_key_press = 1'b0;
-  o_key_release = 1'b0;
 end
 
 endmodule

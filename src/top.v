@@ -200,8 +200,7 @@ keyboard keyboard_inst (
   .io_ps2_clk(PS2Clk),
   .io_ps2_data(PS2Data),
   .o_ascii_code(w_kbd_code),
-  .o_key_press(w_key_press),
-  .o_key_release()
+  .o_key_press(w_key_press)
 );
 
 wire w_fdc_WE;
