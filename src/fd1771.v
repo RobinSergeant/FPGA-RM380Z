@@ -39,9 +39,11 @@ module fd1771(
 `ifdef SD_CARD_SUPPORT
 
 wire w_sd_read;
-wire w_sd_data_ready;
-wire w_sd_read_complete;
+wire w_sd_write;
+wire w_sd_data_req;
+wire w_sd_op_complete;
 wire [7:0] w_sd_dout;
+wire [7:0] w_sd_din;
 wire [31:0] w_sd_address;
 
 sd_card sd_card_inst (
@@ -49,13 +51,15 @@ sd_card sd_card_inst (
   .i_miso(i_miso),
   .i_cd(i_cd),
   .i_read(w_sd_read),
+  .i_write(w_sd_write),
   .i_address(w_sd_address),
-  .o_data_ready(w_sd_data_ready),
-  .o_read_complete(w_sd_read_complete),
+  .i_din(w_sd_din),
+  .o_data_req(w_sd_data_req),
+  .o_op_complete(w_sd_op_complete),
   .o_mosi(o_mosi),
   .o_cs(o_cs),
   .o_sck(o_sck),
-  .o_data(w_sd_dout),
+  .o_dout(w_sd_dout),
   .o_led(o_led)
 );
 
@@ -108,6 +112,7 @@ reg [7:0] r_DALout;
 
 `ifdef SD_CARD_SUPPORT
 reg r_sd_read = 1'b0;
+reg r_sd_write = 1'b0;
 `else
 reg [7:0] r_offset = 0;
 reg r_floppy_we = 1'b0;
@@ -116,6 +121,7 @@ reg r_floppy_we = 1'b0;
 always @(posedge CLK) begin
 `ifdef SD_CARD_SUPPORT
   r_sd_read <= 1'b0;
+  r_sd_write <= 1'b0;
 `endif
 
   if ((WE == 1'b0) && (r_WE == 1'b1)) begin
@@ -145,6 +151,7 @@ always @(posedge CLK) begin
 
           WRITE_SECTOR: begin
             r_status[BUSY] <= 1'b1;
+            r_sd_write <= 1'b1;
           end
 `else
           READ_SECTOR, WRITE_SECTOR: begin
@@ -170,13 +177,15 @@ always @(posedge CLK) begin
 
       DATA_REGISTER: begin
         r_data <= ~DAL;
-`ifndef SD_CARD_SUPPORT
         if ((r_command == WRITE_SECTOR) &&
             (r_status[BUSY] == 1'b1))
         begin
+`ifdef SD_CARD_SUPPORT
+          r_status[DATA_REQUEST] <= 1'b0;
+`else
           r_floppy_we = 1'b1;
-        end
 `endif
+        end
       end
     endcase
   end
@@ -216,12 +225,13 @@ always @(posedge CLK) begin
 `endif
 
 `ifdef SD_CARD_SUPPORT
-  if (w_sd_data_ready) begin
-    r_data <= w_sd_dout;
+  if (w_sd_data_req) begin
+    if (r_command == READ_SECTOR)
+      r_data <= w_sd_dout;
     r_status[DATA_REQUEST] <= 1'b1;
   end
 
-  if (w_sd_read_complete) begin
+  if (w_sd_op_complete) begin
     r_status[BUSY] <= 1'b0;
   end
 `endif
@@ -242,7 +252,9 @@ end
 `ifdef SD_CARD_SUPPORT
 // 2048 byte tracks (0-39), 128 byte sectors (1-16)
 assign w_sd_address = (r_track << 11) + ((r_sector - 1) << 7);
+assign w_sd_din = r_data;
 assign w_sd_read = r_sd_read;
+assign w_sd_write = r_sd_write;
 `else
 // 2048 byte tracks (0-39), 128 byte sectors (1-16)
 assign w_floppy_addr = (r_track << 11) + ((r_sector - 1) << 7) + r_offset;

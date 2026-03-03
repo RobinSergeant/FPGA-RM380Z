@@ -23,32 +23,39 @@ module sd_card(
   input i_miso,
   input i_cd,
   input i_read,
+  input i_write,
   input [31:0] i_address,
-  output reg o_data_ready,
-  output reg o_read_complete,
+  input [7:0] i_din,
+  output reg o_data_req,
+  output reg o_op_complete,
   output reg o_mosi,
   output reg o_cs,
   output o_sck,
-  output reg [7:0] o_data,
+  output reg [7:0] o_dout,
   output [15:0] o_led
 );
 
 localparam CMD0   = {2'b01, 6'd00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h95};  // GO_IDLE_STATE
 localparam CMD8   = {2'b01, 6'd08, 8'h00, 8'h00, 8'h01, 8'hAA, 8'h87};  // SEND_IF_COND
-localparam CMD16  = {2'b01, 6'd16, 8'h00, 8'h00, 8'h00, 8'h80, 8'h01};  // SET_BLOCKLEN
+localparam CMD16  = {2'b01, 6'd16, 8'h00, 8'h00, 8'h00, 8'h80, 8'h01};  // SET_BLOCKLEN (128 bytes)
 localparam CMD17  = {2'b01, 6'd17, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // READ_SINGLE_BLOCK
+localparam CMD24  = {2'b01, 6'd24, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // WRITE_BLOCK
 localparam CMD55  = {2'b01, 6'd55, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // APP_CMD
 localparam ACMD41 = {2'b01, 6'd41, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // SD_SEND_OP_COND
 
-localparam STATE_INIT   = 4'b0000;
+localparam STATE_INIT   = 4'b0000;  // init states
 localparam STATE_CMD0   = 4'b0001;
 localparam STATE_CMD8   = 4'b0010;  
 localparam STATE_CMD55  = 4'b0011;
 localparam STATE_ACMD41 = 4'b0100;
 localparam STATE_CMD16  = 4'b0101;
-localparam STATE_CMD17  = 4'b0110;
+localparam STATE_CMD17  = 4'b0110;  // block read states
 localparam STATE_RBDATA = 4'b0111;
 localparam STATE_RBCRC  = 4'b1000;
+localparam STATE_CMD24  = 4'b1001;  // block write states
+localparam STATE_WBDATA = 4'b1010;
+localparam STATE_WBDRT  = 4'b1011;
+localparam STATE_WBBUSY = 4'b1100;
 localparam STATE_IDLE   = 4'b1111;
 
 reg [4:0] r_ClkCounter = 0;
@@ -78,8 +85,8 @@ reg [7:0] t_ReceivedByte;
 reg [7:0] r_BytesExpected = 10; // stay in INIT state for 80 clocks
 
 always @(posedge i_clk) begin
-  o_data_ready <= 1'b0;
-  o_read_complete <= 1'b0;
+  o_data_req <= 1'b0;
+  o_op_complete <= 1'b0;
 
   if (w_FallingEdge) begin
     o_cs <= (r_State == STATE_INIT);
@@ -119,8 +126,8 @@ always @(posedge i_clk) begin
           end
 
           STATE_RBDATA: begin
-            o_data <= t_ReceivedByte;
-            o_data_ready <= 1'b1;
+            o_dout <= t_ReceivedByte;
+            o_data_req <= 1'b1;
             if (r_BytesExpected == 1) begin
               r_State <= STATE_RBCRC;
               r_BytesExpected <= 2;
@@ -129,8 +136,46 @@ always @(posedge i_clk) begin
 
           STATE_RBCRC: begin
             if (r_BytesExpected == 1) begin
-              o_read_complete <= 1'b1;
+              o_op_complete <= 1'b1;
               r_State <= STATE_IDLE;
+            end
+          end
+
+          STATE_CMD24: begin
+            if (r_BytesExpected == 1) begin
+              r_State <= STATE_WBDATA;
+              r_BytesExpected <= 128;
+              r_Command[47:40] <= i_din;
+              o_data_req <= 1'b1;
+            end
+          end
+
+          STATE_WBDATA: begin
+            if (r_BytesExpected >= 1) begin
+              r_Command[47:40] <= i_din;
+              o_data_req <= 1'b1;
+            end else begin
+              r_State <= STATE_WBDRT;
+              r_BytesExpected <= 1;
+            end
+          end
+
+          STATE_WBDRT: begin
+            if (t_ReceivedByte[4:0] == 5'b00101) begin
+              // data response token received
+              r_State <= STATE_WBBUSY;
+              r_ReadyToSend <= 1'b0;
+            end
+            r_BytesExpected <= 1;
+          end
+
+          STATE_WBBUSY: begin
+            if (t_ReceivedByte == 8'h00) begin
+              // flash programming started
+              o_op_complete <= 1'b1;
+              r_State <= STATE_IDLE;
+            end else begin
+              r_BytesExpected <= 1;
             end
           end
         endcase
@@ -185,6 +230,17 @@ always @(posedge i_clk) begin
               r_BytesExpected <= 1;
             end
           end
+
+          STATE_CMD24: begin
+            if (t_ReceivedByte == 8'h00) begin
+              // send dummy byte followed by start block token
+              r_Command[47:32] <= {8'hFF, 8'hFE};
+              r_BytesExpected <= 2;
+              r_ReadyToSend <= 1'b1;
+              // request first byte
+              o_data_req <= 1'b1;
+            end
+          end
         endcase
       end else if ((t_ReceivedByte == 8'hFF) && !r_Command[47]) begin
         r_ReadyToSend <= 1'b1;
@@ -197,6 +253,9 @@ always @(posedge i_clk) begin
   if (i_read) begin
     r_Command <= {CMD17[47:40], i_address, CMD17[7:0]};
     r_State <= STATE_CMD17;
+  end else if (i_write) begin
+    r_Command <= {CMD24[47:40], i_address, CMD24[7:0]};
+    r_State <= STATE_CMD24;
   end
 end
 
@@ -210,9 +269,9 @@ assign o_led[7:0] = r_ResponseByte;
 initial begin
   o_mosi = 1'b1;
   o_cs = 1'b1;
-  o_data = 8'h00;
-  o_data_ready = 1'b0;
-  o_read_complete = 1'b0;
+  o_dout = 8'h00;
+  o_data_req = 1'b0;
+  o_op_complete = 1'b0;
 end
 
 endmodule
