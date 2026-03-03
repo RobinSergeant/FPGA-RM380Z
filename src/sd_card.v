@@ -35,9 +35,23 @@ module sd_card(
   output [15:0] o_led
 );
 
+wire w_ram_we;
+reg r_ram_we = 1'b0;
+wire [7:0] w_ram_din;
+wire [7:0] w_ram_dout;
+wire [8:0] w_ram_addr;
+reg [8:0] r_ram_addr;
+
+single_port_ram #(.DEPTH(512)) block_cache (
+  .clka(i_clk),
+  .wea(w_ram_we),
+  .addra(w_ram_addr),
+  .dina(w_ram_din),
+  .douta(w_ram_dout)
+);
+
 localparam CMD0   = {2'b01, 6'd00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h95};  // GO_IDLE_STATE
 localparam CMD8   = {2'b01, 6'd08, 8'h00, 8'h00, 8'h01, 8'hAA, 8'h87};  // SEND_IF_COND
-localparam CMD16  = {2'b01, 6'd16, 8'h00, 8'h00, 8'h00, 8'h80, 8'h01};  // SET_BLOCKLEN (128 bytes)
 localparam CMD17  = {2'b01, 6'd17, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // READ_SINGLE_BLOCK
 localparam CMD24  = {2'b01, 6'd24, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // WRITE_BLOCK
 localparam CMD55  = {2'b01, 6'd55, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // APP_CMD
@@ -48,7 +62,7 @@ localparam STATE_CMD0   = 4'b0001;
 localparam STATE_CMD8   = 4'b0010;  
 localparam STATE_CMD55  = 4'b0011;
 localparam STATE_ACMD41 = 4'b0100;
-localparam STATE_CMD16  = 4'b0101;
+localparam STATE_ECHO   = 4'b0101;
 localparam STATE_CMD17  = 4'b0110;  // block read states
 localparam STATE_RBDATA = 4'b0111;
 localparam STATE_RBCRC  = 4'b1000;
@@ -81,8 +95,11 @@ reg [3:0] r_State = STATE_INIT;
 reg [47:0] r_Command = {48{1'b1}};
 reg [7:0] r_ResponseByte = 8'h00;
 reg [7:0] r_ReceivedByte = 8'h01;
+reg [7:0] r_DataByte = 8'h00;
 reg [7:0] t_ReceivedByte;
-reg [7:0] r_BytesExpected = 10; // stay in INIT state for 80 clocks
+reg [9:0] r_BytesExpected = 10; // stay in INIT state for 80 clocks
+reg [22:0] r_BlockNumber;
+reg r_BlockValid = 1'b0;
 
 always @(posedge i_clk) begin
   o_data_req <= 1'b0;
@@ -121,23 +138,44 @@ always @(posedge i_clk) begin
               r_BytesExpected <= 1;
             end else if (t_ReceivedByte == 8'hFE) begin
               r_State <= STATE_RBDATA;
-              r_BytesExpected <= 128;
+              r_BytesExpected <= 512;
+              r_ram_addr <= 511;
             end
           end
 
           STATE_RBDATA: begin
-            o_dout <= t_ReceivedByte;
-            o_data_req <= 1'b1;
+            r_ram_addr <= r_ram_addr + 1;
+            r_DataByte <= t_ReceivedByte;
+            r_ram_we <= 1'b1;
             if (r_BytesExpected == 1) begin
               r_State <= STATE_RBCRC;
               r_BytesExpected <= 2;
             end
           end
 
-          STATE_RBCRC: begin
+          STATE_ECHO: begin
+            o_dout <= w_ram_dout;
+            o_data_req <= 1'b1;
+            r_ram_addr <= r_ram_addr + 1;
             if (r_BytesExpected == 1) begin
-              o_op_complete <= 1'b1;
+              //o_op_complete <= 1'b1;
+              r_BytesExpected <= 1;
               r_State <= STATE_IDLE;
+            end
+          end
+
+          STATE_IDLE: begin
+            o_op_complete <= 1'b1;
+          end
+
+          STATE_RBCRC: begin
+            r_ram_we <= 1'b0;
+            if (r_BytesExpected == 1) begin
+              r_BlockValid <= 1'b1;
+              r_BlockNumber <= i_address[31:9];
+              r_State <= STATE_ECHO;
+              r_BytesExpected <= 128;
+              r_ram_addr <= i_address[8:0];
             end
           end
 
@@ -213,14 +251,7 @@ always @(posedge i_clk) begin
               r_Command <= CMD55;
               r_State <= STATE_CMD55;
             end else if (t_ReceivedByte == 8'h00) begin
-              // card ready so set block size
-              r_Command <= CMD16;
-              r_State <= STATE_CMD16;
-            end
-          end
-
-          STATE_CMD16: begin
-            if (t_ReceivedByte == 8'h00) begin
+              // card ready
               r_State <= STATE_IDLE;
             end
           end
@@ -251,13 +282,25 @@ always @(posedge i_clk) begin
   end
 
   if (i_read) begin
-    r_Command <= {CMD17[47:40], i_address, CMD17[7:0]};
-    r_State <= STATE_CMD17;
-  end else if (i_write) begin
-    r_Command <= {CMD24[47:40], i_address, CMD24[7:0]};
-    r_State <= STATE_CMD24;
+    if (r_BlockValid && (r_BlockNumber == i_address[31:9])) begin
+      // block already in cache
+      r_State <= STATE_ECHO;
+      r_BytesExpected <= 128;
+      r_ram_addr <= i_address[8:0];
+    end else begin
+      r_Command <= {CMD17[47:40], i_address[31:9], {9{1'b0}}, CMD17[7:0]};
+      r_State <= STATE_CMD17;
+    end
   end
+//  end else if (i_write) begin
+//    r_Command <= {CMD24[47:40], i_address, CMD24[7:0]};
+//    r_State <= STATE_CMD24;
+//  end
 end
+
+assign w_ram_we = r_ram_we;
+assign w_ram_addr = r_ram_addr;
+assign w_ram_din = r_DataByte;
 
 assign o_sck = w_ClkBit;
 
