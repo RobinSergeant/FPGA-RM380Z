@@ -72,11 +72,10 @@ reg r_ReadyToSend = 1'b0;
 
 reg [3:0] r_State = STATE_INIT;
 reg [47:0] r_Command = {48{1'b1}};
-reg [6:0] r_InitCounter = 0;
 reg [7:0] r_ResponseByte = 8'h00;
 reg [7:0] r_ReceivedByte = 8'h01;
 reg [7:0] t_ReceivedByte;
-reg [7:0] r_BytesExpected = 0;
+reg [7:0] r_BytesExpected = 10; // stay in INIT state for 80 clocks
 
 always @(posedge i_clk) begin
   o_data_ready <= 1'b0;
@@ -101,6 +100,14 @@ always @(posedge i_clk) begin
         r_BytesExpected <= r_BytesExpected - 1;
 
         case (r_State)
+          STATE_INIT: begin
+            if (r_BytesExpected == 1) begin
+              r_Command <= CMD0;
+              r_State <= STATE_CMD0;
+              r_ReadyToSend <= 1'b1;
+            end
+          end
+
           STATE_CMD17: begin
             if (t_ReceivedByte == 8'hFF) begin
               // keep waiting if card is busy
@@ -184,15 +191,6 @@ always @(posedge i_clk) begin
       end
     end else begin
       r_ReceivedByte <= t_ReceivedByte;
-    end
-
-    if (r_State == STATE_INIT) begin
-      if (r_InitCounter == 79) begin
-        r_Command <= CMD0;
-        r_State <= STATE_CMD0;
-        r_ReadyToSend <= 1'b1;
-      end
-      r_InitCounter <= r_InitCounter + 1;
     end
   end
 
