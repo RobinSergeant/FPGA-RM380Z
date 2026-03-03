@@ -15,6 +15,14 @@ module top(
   inout PS2Clk,
   inout PS2Data,
   input btnU,
+`ifdef SD_CARD_SUPPORT
+  input miso,
+  input cd,
+  output mosi,
+  output cs,
+  output sck,
+  output [15:0] led,
+`endif
   output [3:0] vgaRed,
   output [3:0] vgaGreen,
   output [3:0] vgaBlue,
@@ -206,10 +214,18 @@ keyboard keyboard_inst (
 wire w_fdc_WE;
 wire w_fdc_RE;
 wire [1:0] w_fdc_A;
-wire [7:0] w_fdc_DAL; 
+wire [7:0] w_fdc_DAL;
 
 fd1771 fd1771_inst (
   .CLK(w_clk_cpu),
+`ifdef SD_CARD_SUPPORT
+  .i_miso(miso),
+  .i_cd(cd),
+  .o_mosi(mosi),
+  .o_cs(cs),
+  .o_sck(sck),
+  .o_led(led),
+`endif
   .WE(w_fdc_WE),
   .RE(w_fdc_RE),
   .A(w_fdc_A),
