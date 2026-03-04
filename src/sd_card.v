@@ -24,6 +24,7 @@ module sd_card(
   input i_cd,
   input i_read,
   input i_write,
+  input i_data_ack,
   input [31:0] i_address,
   input [7:0] i_din,
   output reg o_data_req,
@@ -31,7 +32,7 @@ module sd_card(
   output reg o_mosi,
   output reg o_cs,
   output o_sck,
-  output reg [7:0] o_dout,
+  output [7:0] o_dout,
   output [15:0] o_led
 );
 
@@ -62,7 +63,7 @@ localparam STATE_CMD0   = 4'b0001;
 localparam STATE_CMD8   = 4'b0010;  
 localparam STATE_CMD55  = 4'b0011;
 localparam STATE_ACMD41 = 4'b0100;
-localparam STATE_ECHO   = 4'b0101;
+
 localparam STATE_CMD17  = 4'b0110;  // block read states
 localparam STATE_RBDATA = 4'b0111;
 localparam STATE_RBCRC  = 4'b1000;
@@ -102,7 +103,6 @@ reg [22:0] r_BlockNumber;
 reg r_BlockValid = 1'b0;
 
 always @(posedge i_clk) begin
-  o_data_req <= 1'b0;
   o_op_complete <= 1'b0;
 
   if (w_FallingEdge) begin
@@ -153,29 +153,14 @@ always @(posedge i_clk) begin
             end
           end
 
-          STATE_ECHO: begin
-            o_dout <= w_ram_dout;
-            o_data_req <= 1'b1;
-            r_ram_addr <= r_ram_addr + 1;
-            if (r_BytesExpected == 1) begin
-              //o_op_complete <= 1'b1;
-              r_BytesExpected <= 1;
-              r_State <= STATE_IDLE;
-            end
-          end
-
-          STATE_IDLE: begin
-            o_op_complete <= 1'b1;
-          end
-
           STATE_RBCRC: begin
             r_ram_we <= 1'b0;
             if (r_BytesExpected == 1) begin
               r_BlockValid <= 1'b1;
               r_BlockNumber <= i_address[31:9];
-              r_State <= STATE_ECHO;
-              r_BytesExpected <= 128;
               r_ram_addr <= i_address[8:0];
+              o_data_req <= 1'b1;
+              r_State <= STATE_IDLE;
             end
           end
 
@@ -284,9 +269,8 @@ always @(posedge i_clk) begin
   if (i_read) begin
     if (r_BlockValid && (r_BlockNumber == i_address[31:9])) begin
       // block already in cache
-      r_State <= STATE_ECHO;
-      r_BytesExpected <= 128;
       r_ram_addr <= i_address[8:0];
+      o_data_req <= 1'b1;
     end else begin
       r_Command <= {CMD17[47:40], i_address[31:9], {9{1'b0}}, CMD17[7:0]};
       r_State <= STATE_CMD17;
@@ -296,6 +280,14 @@ always @(posedge i_clk) begin
 //    r_Command <= {CMD24[47:40], i_address, CMD24[7:0]};
 //    r_State <= STATE_CMD24;
 //  end
+
+  if (i_data_ack) begin
+    r_ram_addr <= r_ram_addr + 1;
+    if (&r_ram_addr[6:0]) begin
+      o_op_complete <= 1'b1;
+      o_data_req <= 1'b0;
+    end
+  end
 end
 
 assign w_ram_we = r_ram_we;
@@ -303,6 +295,8 @@ assign w_ram_addr = r_ram_addr;
 assign w_ram_din = r_DataByte;
 
 assign o_sck = w_ClkBit;
+
+assign o_dout = w_ram_dout;
 
 assign o_led[15] = ~i_cd;
 assign o_led[14:11] = r_State;
@@ -312,7 +306,6 @@ assign o_led[7:0] = r_ResponseByte;
 initial begin
   o_mosi = 1'b1;
   o_cs = 1'b1;
-  o_dout = 8'h00;
   o_data_req = 1'b0;
   o_op_complete = 1'b0;
 end

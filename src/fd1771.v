@@ -41,6 +41,7 @@ module fd1771(
 wire w_sd_read;
 wire w_sd_write;
 wire w_sd_data_req;
+wire w_sd_data_ack;
 wire w_sd_op_complete;
 wire [7:0] w_sd_dout;
 wire [7:0] w_sd_din;
@@ -52,6 +53,7 @@ sd_card sd_card_inst (
   .i_cd(i_cd),
   .i_read(w_sd_read),
   .i_write(w_sd_write),
+  .i_data_ack(w_sd_data_ack),
   .i_address(w_sd_address),
   .i_din(w_sd_din),
   .o_data_req(w_sd_data_req),
@@ -113,6 +115,7 @@ reg [7:0] r_DALout;
 `ifdef SD_CARD_SUPPORT
 reg r_sd_read = 1'b0;
 reg r_sd_write = 1'b0;
+reg r_sd_data_ack = 1'b0;
 `else
 reg [7:0] r_offset = 0;
 reg r_floppy_we = 1'b0;
@@ -122,6 +125,7 @@ always @(posedge CLK) begin
 `ifdef SD_CARD_SUPPORT
   r_sd_read <= 1'b0;
   r_sd_write <= 1'b0;
+  r_sd_data_ack <= 1'b0;
 `endif
 
   if ((WE == 1'b0) && (r_WE == 1'b1)) begin
@@ -197,7 +201,8 @@ always @(posedge CLK) begin
       (r_status[BUSY] == 1'b1))
   begin
 `ifdef SD_CARD_SUPPORT
-    r_status[DATA_REQUEST] <= 1'b0;
+    r_data <= w_sd_dout;
+    r_sd_data_ack <= 1'b1;
 `else
     r_data <= w_floppy_dout;
  
@@ -225,11 +230,7 @@ always @(posedge CLK) begin
 `endif
 
 `ifdef SD_CARD_SUPPORT
-  if (w_sd_data_req) begin
-    if (r_command == READ_SECTOR)
-      r_data <= w_sd_dout;
-    r_status[DATA_REQUEST] <= 1'b1;
-  end
+  r_status[DATA_REQUEST] <= w_sd_data_req;
 
   if (w_sd_op_complete) begin
     r_status[BUSY] <= 1'b0;
@@ -255,6 +256,7 @@ assign w_sd_address = (r_track << 11) + ((r_sector - 1) << 7);
 assign w_sd_din = r_data;
 assign w_sd_read = r_sd_read;
 assign w_sd_write = r_sd_write;
+assign w_sd_data_ack = r_sd_data_ack;
 `else
 // 2048 byte tracks (0-39), 128 byte sectors (1-16)
 assign w_floppy_addr = (r_track << 11) + ((r_sector - 1) << 7) + r_offset;
