@@ -102,12 +102,13 @@ reg [9:0] r_BytesExpected = 10; // stay in INIT state for 80 clocks
 reg [22:0] r_BlockNumber;
 reg r_BlockValid = 1'b0;
 reg r_WriteOp = 1'b0;
+reg r_cs = 1'b1;
 
 always @(posedge i_clk) begin
   o_op_complete <= 1'b0;
 
   if (w_FallingEdge) begin
-    o_cs <= (r_State == STATE_INIT);
+    o_cs <= r_cs;
     if (r_ReadyToSend) begin
       o_mosi <= r_Command[47];
       r_Command <= {r_Command[46:0], 1'b1};
@@ -129,7 +130,6 @@ always @(posedge i_clk) begin
             if (r_BytesExpected == 1) begin
               r_Command <= CMD0;
               r_State <= STATE_CMD0;
-              r_ReadyToSend <= 1'b1;
             end
           end
 
@@ -197,8 +197,15 @@ always @(posedge i_clk) begin
           STATE_WBBUSY: begin
             if (t_ReceivedByte == 8'h00) begin
               // flash programming started
-              o_op_complete <= 1'b1;
               r_State <= STATE_IDLE;
+            end
+            r_BytesExpected <= 1;
+          end
+
+          STATE_IDLE: begin
+            if (t_ReceivedByte == 8'hFF) begin
+              // flash programming complete
+              o_op_complete <= 1'b1;
             end else begin
               r_BytesExpected <= 1;
             end
@@ -258,8 +265,13 @@ always @(posedge i_clk) begin
             end
           end
         endcase
-      end else if ((t_ReceivedByte == 8'hFF) && !r_Command[47]) begin
-        r_ReadyToSend <= 1'b1;
+      end else if (t_ReceivedByte == 8'hFF) begin
+        if (!r_Command[47]) begin
+          r_ReadyToSend <= 1'b1;
+          r_cs <= 1'b0;
+        end
+        if (r_State == STATE_IDLE)
+          r_cs <= 1'b1;
       end
     end else begin
       r_ReceivedByte <= t_ReceivedByte;
@@ -299,7 +311,7 @@ end
 
 assign w_ram_we = r_ram_we;
 assign w_ram_addr = r_ram_addr;
-assign w_ram_din = (r_State == STATE_IDLE) ? i_din : r_DataByte;
+assign w_ram_din = o_data_req ? i_din : r_DataByte;
 
 assign o_sck = w_ClkBit;
 
