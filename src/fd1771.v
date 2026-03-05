@@ -185,7 +185,7 @@ always @(posedge CLK) begin
             (r_status[BUSY] == 1'b1))
         begin
 `ifdef SD_CARD_SUPPORT
-          r_status[DATA_REQUEST] <= 1'b0;
+          r_sd_data_ack <= 1'b1;
 `else
           r_floppy_we = 1'b1;
 `endif

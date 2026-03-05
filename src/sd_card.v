@@ -101,6 +101,7 @@ reg [7:0] t_ReceivedByte;
 reg [9:0] r_BytesExpected = 10; // stay in INIT state for 80 clocks
 reg [22:0] r_BlockNumber;
 reg r_BlockValid = 1'b0;
+reg r_WriteOp = 1'b0;
 
 always @(posedge i_clk) begin
   o_op_complete <= 1'b0;
@@ -156,9 +157,10 @@ always @(posedge i_clk) begin
           STATE_RBCRC: begin
             r_ram_we <= 1'b0;
             if (r_BytesExpected == 1) begin
-              r_BlockValid <= 1'b1;
+              r_BlockValid <= ~r_WriteOp;
               r_BlockNumber <= i_address[31:9];
               r_ram_addr <= i_address[8:0];
+              r_ram_we <= r_WriteOp;
               o_data_req <= 1'b1;
               r_State <= STATE_IDLE;
             end
@@ -167,16 +169,16 @@ always @(posedge i_clk) begin
           STATE_CMD24: begin
             if (r_BytesExpected == 1) begin
               r_State <= STATE_WBDATA;
-              r_BytesExpected <= 128;
-              r_Command[47:40] <= i_din;
-              o_data_req <= 1'b1;
+              r_BytesExpected <= 512;
+              r_Command[47:40] <= w_ram_dout;
+              r_ram_addr <= r_ram_addr + 1;
             end
           end
 
           STATE_WBDATA: begin
-            if (r_BytesExpected >= 1) begin
-              r_Command[47:40] <= i_din;
-              o_data_req <= 1'b1;
+            if (r_BytesExpected > 1) begin
+              r_Command[47:40] <= w_ram_dout;
+              r_ram_addr <= r_ram_addr + 1;
             end else begin
               r_State <= STATE_WBDRT;
               r_BytesExpected <= 1;
@@ -253,8 +255,6 @@ always @(posedge i_clk) begin
               r_Command[47:32] <= {8'hFF, 8'hFE};
               r_BytesExpected <= 2;
               r_ReadyToSend <= 1'b1;
-              // request first byte
-              o_data_req <= 1'b1;
             end
           end
         endcase
@@ -266,33 +266,40 @@ always @(posedge i_clk) begin
     end
   end
 
-  if (i_read) begin
+  if (i_read || i_write) begin
+    r_WriteOp <= i_write;
     if (r_BlockValid && (r_BlockNumber == i_address[31:9])) begin
       // block already in cache
+      r_BlockValid <= i_read;
       r_ram_addr <= i_address[8:0];
+      r_ram_we <= i_write;
       o_data_req <= 1'b1;
     end else begin
+      // read block
       r_Command <= {CMD17[47:40], i_address[31:9], {9{1'b0}}, CMD17[7:0]};
       r_State <= STATE_CMD17;
     end
   end
-//  end else if (i_write) begin
-//    r_Command <= {CMD24[47:40], i_address, CMD24[7:0]};
-//    r_State <= STATE_CMD24;
-//  end
 
   if (i_data_ack) begin
     r_ram_addr <= r_ram_addr + 1;
     if (&r_ram_addr[6:0]) begin
-      o_op_complete <= 1'b1;
       o_data_req <= 1'b0;
+      if (r_WriteOp) begin
+        r_ram_addr <= 0;
+        r_ram_we <= 1'b0;
+        r_Command <= {CMD24[47:40], i_address[31:9], {9{1'b0}}, CMD24[7:0]};
+        r_State <= STATE_CMD24;
+      end else begin
+        o_op_complete <= 1'b1;
+      end
     end
   end
 end
 
 assign w_ram_we = r_ram_we;
 assign w_ram_addr = r_ram_addr;
-assign w_ram_din = r_DataByte;
+assign w_ram_din = (r_State == STATE_IDLE) ? i_din : r_DataByte;
 
 assign o_sck = w_ClkBit;
 
