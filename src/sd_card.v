@@ -8,12 +8,6 @@
  * initializing the card, and provides an interface for reading from and        *
  * writing to it.                                                               *
  *                                                                              *
- * Only older SDSC cards are currently supported as later cards have a fixed    *
- * 512K block size, which does not map nicely to the 380Z's 128K sector size.   *
- *                                                                              *
- * Hence, for simplicity SET_BLOCKLEN is used to reduce the block size to 128K. *
- * By doing this we don't have the to read and write 4 sectors at a time!       *
- *                                                                              *
  ********************************************************************************/
 
 `timescale 1ns / 1ps
@@ -56,14 +50,15 @@ localparam CMD8   = {2'b01, 6'd08, 8'h00, 8'h00, 8'h01, 8'hAA, 8'h87};  // SEND_
 localparam CMD17  = {2'b01, 6'd17, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // READ_SINGLE_BLOCK
 localparam CMD24  = {2'b01, 6'd24, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // WRITE_BLOCK
 localparam CMD55  = {2'b01, 6'd55, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // APP_CMD
-localparam ACMD41 = {2'b01, 6'd41, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // SD_SEND_OP_COND
+localparam CMD58  = {2'b01, 6'd58, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // READ_OCR
+localparam ACMD41 = {2'b01, 6'd41, 8'h40, 8'h00, 8'h00, 8'h00, 8'h01};  // SD_SEND_OP_COND
 
 localparam STATE_INIT   = 4'b0000;  // init states
 localparam STATE_CMD0   = 4'b0001;
 localparam STATE_CMD8   = 4'b0010;  
 localparam STATE_CMD55  = 4'b0011;
 localparam STATE_ACMD41 = 4'b0100;
-
+localparam STATE_CMD58  = 4'b0101;
 localparam STATE_CMD17  = 4'b0110;  // block read states
 localparam STATE_RBDATA = 4'b0111;
 localparam STATE_RBCRC  = 4'b1000;
@@ -97,12 +92,15 @@ reg [47:0] r_Command = {48{1'b1}};
 reg [7:0] r_ResponseByte = 8'h00;
 reg [7:0] r_ReceivedByte = 8'h01;
 reg [7:0] r_DataByte = 8'h00;
-reg [7:0] t_ReceivedByte;
 reg [9:0] r_BytesExpected = 10; // stay in INIT state for 80 clocks
 reg [22:0] r_BlockNumber;
 reg r_BlockValid = 1'b0;
 reg r_WriteOp = 1'b0;
 reg r_cs = 1'b1;
+reg r_SDHC = 1'b0;
+
+reg [31:0] t_BlockAddress;
+reg [7:0] t_ReceivedByte;
 
 always @(posedge i_clk) begin
   o_op_complete <= 1'b0;
@@ -130,6 +128,25 @@ always @(posedge i_clk) begin
             if (r_BytesExpected == 1) begin
               r_Command <= CMD0;
               r_State <= STATE_CMD0;
+            end
+          end
+
+          STATE_CMD8: begin
+            if (r_BytesExpected == 1) begin
+              r_cs <= 1'b1;
+              r_Command <= CMD55;
+              r_State <= STATE_CMD55;
+            end
+          end
+
+          STATE_CMD58: begin
+            if (r_BytesExpected == 4) begin
+              // bit 30 of OCR contains the CCS
+              r_SDHC <= t_ReceivedByte[6];
+            end else if (r_BytesExpected == 1) begin
+              // card init finished
+              r_cs <= 1'b1;
+              r_State <= STATE_IDLE;
             end
           end
 
@@ -163,6 +180,7 @@ always @(posedge i_clk) begin
               r_ram_we <= r_WriteOp;
               o_data_req <= 1'b1;
               r_State <= STATE_IDLE;
+              r_cs <= 1'b1;
             end
           end
 
@@ -189,7 +207,6 @@ always @(posedge i_clk) begin
             if (t_ReceivedByte[4:0] == 5'b00101) begin
               // data response token received
               r_State <= STATE_WBBUSY;
-              r_ReadyToSend <= 1'b0;
             end
             r_BytesExpected <= 1;
           end
@@ -206,6 +223,7 @@ always @(posedge i_clk) begin
             if (t_ReceivedByte == 8'hFF) begin
               // flash programming complete
               o_op_complete <= 1'b1;
+              r_cs <= 1'b1;
             end else begin
               r_BytesExpected <= 1;
             end
@@ -214,6 +232,7 @@ always @(posedge i_clk) begin
       end else if (t_ReceivedByte[7] == 1'b0) begin
         // process R1 command response
         r_ReadyToSend <= 1'b0;
+        r_cs <= 1'b1;
         r_ResponseByte <= t_ReceivedByte;
 
         case (r_State)
@@ -226,9 +245,8 @@ always @(posedge i_clk) begin
 
           STATE_CMD8: begin
             if (t_ReceivedByte == 8'h01) begin
+              r_cs <= 1'b0;
               r_BytesExpected <= 4;
-              r_Command <= CMD55;
-              r_State <= STATE_CMD55;
             end
           end
 
@@ -245,13 +263,22 @@ always @(posedge i_clk) begin
               r_Command <= CMD55;
               r_State <= STATE_CMD55;
             end else if (t_ReceivedByte == 8'h00) begin
-              // card ready
-              r_State <= STATE_IDLE;
+              // card ready, fetch CCS
+              r_Command <= CMD58;
+              r_State <= STATE_CMD58;
+            end
+          end
+
+          STATE_CMD58: begin
+            if (t_ReceivedByte == 8'h00) begin
+              r_cs <= 1'b0;
+              r_BytesExpected <= 4;
             end
           end
 
           STATE_CMD17: begin
             if (t_ReceivedByte == 8'h00) begin
+              r_cs <= 1'b0;
               r_BytesExpected <= 1;
             end
           end
@@ -260,6 +287,7 @@ always @(posedge i_clk) begin
             if (t_ReceivedByte == 8'h00) begin
               // send dummy byte followed by start block token
               r_Command[47:32] <= {8'hFF, 8'hFE};
+              r_cs <= 1'b0;
               r_BytesExpected <= 2;
               r_ReadyToSend <= 1'b1;
             end
@@ -267,16 +295,19 @@ always @(posedge i_clk) begin
         endcase
       end else if (t_ReceivedByte == 8'hFF) begin
         if (!r_Command[47]) begin
-          r_ReadyToSend <= 1'b1;
+          // send one FF byte with CS low before new command
           r_cs <= 1'b0;
+          if (!r_cs)
+            r_ReadyToSend <= 1'b1;
         end
-        if (r_State == STATE_IDLE)
-          r_cs <= 1'b1;
       end
     end else begin
       r_ReceivedByte <= t_ReceivedByte;
     end
   end
+
+  // use block based addressing for SDHC, and byte addressing for SDSC
+  t_BlockAddress = (r_SDHC) ? {{9{1'b0}}, i_address[31:9]} : {i_address[31:9], {9{1'b0}}};
 
   if (i_read || i_write) begin
     r_WriteOp <= i_write;
@@ -288,8 +319,9 @@ always @(posedge i_clk) begin
       o_data_req <= 1'b1;
     end else begin
       // read block
-      r_Command <= {CMD17[47:40], i_address[31:9], {9{1'b0}}, CMD17[7:0]};
+      r_Command <= {CMD17[47:40], t_BlockAddress, CMD17[7:0]};
       r_State <= STATE_CMD17;
+      r_ReadyToSend <= 1'b0;
     end
   end
 
@@ -300,8 +332,9 @@ always @(posedge i_clk) begin
       if (r_WriteOp) begin
         r_ram_addr <= 0;
         r_ram_we <= 1'b0;
-        r_Command <= {CMD24[47:40], i_address[31:9], {9{1'b0}}, CMD24[7:0]};
+        r_Command <= {CMD24[47:40], t_BlockAddress, CMD24[7:0]};
         r_State <= STATE_CMD24;
+        r_ReadyToSend <= 1'b0;
       end else begin
         o_op_complete <= 1'b1;
       end
@@ -317,9 +350,11 @@ assign o_sck = w_ClkBit;
 
 assign o_dout = w_ram_dout;
 
-assign o_led[15] = ~i_cd;
-assign o_led[14:11] = r_State;
-assign o_led[10:8] = 1'b0;
+assign o_led[15:12] = r_State;
+assign o_led[11] = 1'b0;
+assign o_led[10] = ~i_cd;
+assign o_led[9] = r_SDHC;
+assign o_led[8] = 1'b0;
 assign o_led[7:0] = r_ResponseByte;
 
 initial begin
