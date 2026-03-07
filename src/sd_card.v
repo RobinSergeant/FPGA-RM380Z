@@ -97,12 +97,14 @@ reg [22:0] r_BlockNumber;
 reg r_BlockValid = 1'b0;
 reg r_WriteOp = 1'b0;
 reg r_cs = 1'b1;
+reg r_cd = 1'b0;
 reg r_SDHC = 1'b0;
 
 reg [31:0] t_BlockAddress;
 reg [7:0] t_ReceivedByte;
 
 always @(posedge i_clk) begin
+  r_cd <= i_cd;
   o_op_complete <= 1'b0;
 
   if (w_FallingEdge) begin
@@ -339,6 +341,17 @@ always @(posedge i_clk) begin
         o_op_complete <= 1'b1;
       end
     end
+  end
+
+  if (!i_cd && r_cd) begin
+    // new card inserted
+    o_mosi = 1'b1;
+    o_cs = 1'b1;
+    r_cs <= 1'b1;
+    r_ReadyToSend <= 1'b0;
+    r_BlockValid <= 1'b0;
+    r_State <= STATE_INIT;
+    r_BytesExpected <= 10; // stay in INIT state for 80 clocks
   end
 end
 
