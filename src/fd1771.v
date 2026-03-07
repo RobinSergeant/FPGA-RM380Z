@@ -25,6 +25,8 @@ module fd1771(
 `ifdef SD_CARD_SUPPORT
   input i_miso,
   input i_cd,
+  input i_floppy_sel,
+  input i_side_sel,
   output o_mosi,
   output o_cs,
   output o_sck,
@@ -252,7 +254,9 @@ end
 
 `ifdef SD_CARD_SUPPORT
 // 2048 byte tracks (0-39), 128 byte sectors (1-16)
-assign w_sd_address = (r_track << 11) + ((r_sector - 1) << 7);
+// Data for Tn side 2 comes immidiately after data for Tn side 1
+// Data for different disks is offset by 512K (even though only 160K is used for each)
+assign w_sd_address = (i_floppy_sel << 19) + (r_track << 12) + (i_side_sel << 11) + ((r_sector - 1) << 7);
 assign w_sd_din = r_data;
 assign w_sd_read = r_sd_read;
 assign w_sd_write = r_sd_write;

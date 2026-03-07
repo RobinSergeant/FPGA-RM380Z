@@ -215,12 +215,16 @@ wire w_fdc_WE;
 wire w_fdc_RE;
 wire [1:0] w_fdc_A;
 wire [7:0] w_fdc_DAL;
+wire w_floppy_sel;
+wire w_side_sel;
 
 fd1771 fd1771_inst (
   .CLK(w_clk_cpu),
 `ifdef SD_CARD_SUPPORT
   .i_miso(miso),
   .i_cd(cd),
+  .i_floppy_sel(w_floppy_sel),
+  .i_side_sel(w_side_sel),
   .o_mosi(mosi),
   .o_cs(cs),
   .o_sck(sck),
@@ -463,6 +467,8 @@ reg [3:0] r_nmi_counter = 0;
 reg [3:0] r_row_latch = 0;
 reg [7:0] r_char_latch = 0;
 reg r_key_ready = 1'b0;
+reg r_floppy_sel = 1'b0;
+reg r_side_sel = 1'b0;
 
 always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
   if (w_cpu_reset == 1'b0) begin
@@ -501,6 +507,11 @@ always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
             r_row_latch <= w_D;
         end
       endcase
+    end else if ((w_IORQ == 1'b0) && (w_WR == 1'b0) && (w_A[7:0] >= 8'hC4) && (w_A[7:0] <= 8'hC7)) begin
+      if (w_D[1:0]) begin
+        r_floppy_sel <= w_D[1];
+        r_side_sel <= w_D[4];
+      end
     end
   
     if (w_key_press) begin
@@ -630,6 +641,8 @@ assign Vsync = w_vsync;
 assign w_fdc_WE = ~((w_IORQ == 1'b0) && (w_WR == 1'b0) && (w_A[7:0] >= 8'hC0) && (w_A[7:0] <= 8'hC3));
 assign w_fdc_RE = ~((w_IORQ == 1'b0) && (w_RD == 1'b0) && (w_A[7:0] >= 8'hC0) && (w_A[7:0] <= 8'hC3));
 assign w_fdc_A = w_A[1:0];
-assign w_fdc_DAL = (w_RD == 1'b1) ? w_D : {8{1'bz}}; 
+assign w_fdc_DAL = (w_RD == 1'b1) ? w_D : {8{1'bz}};
+assign w_floppy_sel = r_floppy_sel;
+assign w_side_sel = r_side_sel;
 
 endmodule
