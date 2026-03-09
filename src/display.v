@@ -199,6 +199,7 @@ reg [7:0] r_colour;
 reg [11:0] r_hrg_out;
 reg [9:0] r_hrg_xpos = 8;
 reg [8:0] r_hrg_ypos = 0;
+reg [8:0] r_hrg_byte_ypos = 0;
 reg [2:0] r_hrg_pixel_no = 0;
 reg [7:0] r_hrg_byte;
 
@@ -210,6 +211,7 @@ always @(posedge i_clk) begin
     if (r_hrg_pixel_no == 7) begin
       // start displaying the next byte
       r_hrg_byte <= i_hrg_data;
+      r_hrg_byte_ypos <= r_hrg_ypos;
       r_hrg_pixel_no <= 0;
       // read ahead 8 pixels to get a new byte
       if (r_hrg_xpos == 632) begin
@@ -279,7 +281,7 @@ always @(*) begin
   // GRGBRGBR   (3 bits for red and green, only 2 bits for blue)
   // 22111000   (bits 7, 5, and 2 form green etc.)
   r_colour = r_mode[1] ? r_scratchpad[{r_hrg_byte[5:4], r_hrg_byte[1:0]}] : r_scratchpad[r_hrg_byte[1:0]];
-  if ((r_hrg_ypos < 384) && r_mode) begin
+  if ((r_hrg_byte_ypos < 384) && r_mode) begin
     r_hrg_out = {r_colour[6], r_colour[3], r_colour[0], r_colour[6], r_colour[7], r_colour[5], r_colour[2], r_colour[7], r_colour[4], r_colour[1], r_colour[4], r_colour[1]};
   end else begin
     r_hrg_out = BLACK;
