@@ -282,7 +282,11 @@ wire [7:0] w_rom_dout;
 wire [12:0] w_rom_addr;
 reg [12:0] r_rom_addr;
 
-single_port_rom #(.DEPTH(5632), .INIT_FILE("combined_roms.mem")) rom_inst (
+`ifdef FDS_SUPPORT
+single_port_rom #(.DEPTH(5632), .INIT_FILE("combined_fds.mem")) rom_inst (
+`else
+single_port_rom #(.DEPTH(5632), .INIT_FILE("combined_mds.mem")) rom_inst (
+`endif
   .clka(w_clk_cpu),
   .addra(w_rom_addr),
   .douta(w_rom_dout)
@@ -456,6 +460,15 @@ xpm_cdc_handshake_port1_inst (
  *                                                                              *
  ********************************************************************************/
 
+`ifdef FDS_SUPPORT
+localparam FD1771_PORT = 8'hE0;
+localparam FDC_PORT    = 8'hE4;
+`else
+localparam FD1771_PORT = 8'hC0;
+localparam FDC_PORT    = 8'hC4;
+`endif
+localparam PORT_MASK = 8'b11111100;
+
 reg [7:0] r_port0 = 0;
 reg [7:0] r_hrg_port0 = 0;
 reg [7:0] r_hrg_port0_out = 0;
@@ -507,11 +520,12 @@ always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
             r_row_latch <= w_D;
         end
       endcase
-    end else if ((w_IORQ == 1'b0) && (w_WR == 1'b0) && (w_A[7:0] >= 8'hC4) && (w_A[7:0] <= 8'hC7)) begin
-      if (w_D[1:0]) begin
-        r_floppy_sel <= w_D[1];
-        r_side_sel <= w_D[4];
-      end
+    end else if ((w_IORQ == 1'b0) && (w_WR == 1'b0) &&
+                 ((w_A[7:0] & PORT_MASK) == FDC_PORT) &&
+                 (w_D[1:0]))
+    begin
+      r_floppy_sel <= w_D[1];
+      r_side_sel <= w_D[4];
     end
   
     if (w_key_press) begin
@@ -560,7 +574,7 @@ always @(*) begin
   r_ram_we = 1'b0;
 
   if (w_IORQ == 1'b0) begin
-    if ((w_A[7:0] >= 8'hC0) && (w_A[7:0] <= 8'hC3)) begin
+    if ((w_A[7:0] & PORT_MASK) == FD1771_PORT) begin
       r_Dout = w_fdc_DAL;
     end else begin
       r_Dout = 8'hFF;
@@ -638,8 +652,8 @@ assign w_D = (w_RD == 1'b0) ? r_Dout : {8{1'bz}};
 assign Hsync = w_hsync;
 assign Vsync = w_vsync;
 
-assign w_fdc_WE = ~((w_IORQ == 1'b0) && (w_WR == 1'b0) && (w_A[7:0] >= 8'hC0) && (w_A[7:0] <= 8'hC3));
-assign w_fdc_RE = ~((w_IORQ == 1'b0) && (w_RD == 1'b0) && (w_A[7:0] >= 8'hC0) && (w_A[7:0] <= 8'hC3));
+assign w_fdc_WE = ~((w_IORQ == 1'b0) && (w_WR == 1'b0) && ((w_A[7:0] & PORT_MASK) == FD1771_PORT));
+assign w_fdc_RE = ~((w_IORQ == 1'b0) && (w_RD == 1'b0) && ((w_A[7:0] & PORT_MASK) == FD1771_PORT));
 assign w_fdc_A = w_A[1:0];
 assign w_fdc_DAL = (w_RD == 1'b1) ? w_D : {8{1'bz}};
 assign w_floppy_sel = r_floppy_sel;
