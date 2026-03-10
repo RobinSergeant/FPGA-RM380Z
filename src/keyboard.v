@@ -162,6 +162,7 @@ function automatic [7:0] to_ascii;
       8'h5A:   to_ascii = 8'h0D;  // Return (CR+LF)
       8'h66:   to_ascii = 8'h7F;  // Backspace (BS+DEL)
       8'h76:   to_ascii = 8'h1B;  // ESC
+      8'h0D:   to_ascii = 8'h09;  // Tab
       default: to_ascii = NOKEY;  // unknown key (ignore)
     endcase
   end  
