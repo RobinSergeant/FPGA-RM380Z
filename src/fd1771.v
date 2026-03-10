@@ -255,9 +255,9 @@ end
 `ifdef SD_CARD_SUPPORT
 `ifdef FDS_SUPPORT
 // 77 tracks (0-76), 128 byte sectore (1-26)
-// Currently only SSSD used (single sided)
-// Data for different disks is offset by 512K (even though only 250K is used for each)
-assign w_sd_address = (i_floppy_sel << 19) + (((r_track * 26) + (r_sector - 1)) * 128);
+// Data for Tn side 2 comes immidiately after data for Tn side 1 (DSSD)
+// Data for different disks is offset by 512K
+assign w_sd_address = (i_floppy_sel << 19) + (((((r_track * 2) + i_side_sel) * 26) + (r_sector - 1)) * 128);
 `else
 // 2048 byte tracks (0-39), 128 byte sectors (1-16)
 // Data for Tn side 2 comes immidiately after data for Tn side 1 (DSSD)
