@@ -23,11 +23,20 @@ module sd_card(
   input [7:0] i_din,
   output reg o_data_req,
   output reg o_op_complete,
+  output reg o_op_failed,
   output reg o_mosi,
   output reg o_cs,
   output o_sck,
+  output o_ready,
   output [7:0] o_dout,
   output [15:0] o_led
+);
+
+wire w_cd;
+debounce #(.DEBOUNCE_LIMIT(100000)) debounce_cd_inst (
+.i_clk(i_clk),
+.i_in(i_cd),
+.o_out(w_cd)
 );
 
 wire w_ram_we;
@@ -59,14 +68,14 @@ localparam STATE_CMD8   = 4'b0010;
 localparam STATE_CMD55  = 4'b0011;
 localparam STATE_ACMD41 = 4'b0100;
 localparam STATE_CMD58  = 4'b0101;
-localparam STATE_CMD17  = 4'b0110;  // block read states
-localparam STATE_RBDATA = 4'b0111;
-localparam STATE_RBCRC  = 4'b1000;
-localparam STATE_CMD24  = 4'b1001;  // block write states
-localparam STATE_WBDATA = 4'b1010;
-localparam STATE_WBDRT  = 4'b1011;
-localparam STATE_WBBUSY = 4'b1100;
-localparam STATE_IDLE   = 4'b1111;
+localparam STATE_IDLE   = 4'b1000;
+localparam STATE_CMD17  = 4'b1001;  // block read states
+localparam STATE_RBDATA = 4'b1010;
+localparam STATE_RBCRC  = 4'b1011;
+localparam STATE_CMD24  = 4'b1100;  // block write states
+localparam STATE_WBDATA = 4'b1101;
+localparam STATE_WBDRT  = 4'b1110;
+localparam STATE_WBBUSY = 4'b1111;
 
 reg [4:0] r_ClkCounter = 0;
 reg r_PrevClkBit = 0;
@@ -104,8 +113,9 @@ reg [31:0] t_BlockAddress;
 reg [7:0] t_ReceivedByte;
 
 always @(posedge i_clk) begin
-  r_cd <= i_cd;
+  r_cd <= w_cd;
   o_op_complete <= 1'b0;
+  o_op_failed <= 1'b0;
 
   if (w_FallingEdge) begin
     o_cs <= r_cs;
@@ -160,6 +170,10 @@ always @(posedge i_clk) begin
               r_State <= STATE_RBDATA;
               r_BytesExpected <= 512;
               r_ram_addr <= 511;
+            end else begin
+              o_op_failed <= 1'b1;
+              r_cs <= 1'b1;
+              r_State <= STATE_IDLE;
             end
           end
 
@@ -209,8 +223,15 @@ always @(posedge i_clk) begin
             if (t_ReceivedByte[4:0] == 5'b00101) begin
               // data response token received
               r_State <= STATE_WBBUSY;
+              r_BytesExpected <= 1;
+            end else if (t_ReceivedByte[4:0] == 5'b01101) begin
+              // write error
+              o_op_failed <= 1'b1;
+              r_cs <= 1'b1;
+              r_State <= STATE_IDLE;
+            end else begin
+              r_BytesExpected <= 1;
             end
-            r_BytesExpected <= 1;
           end
 
           STATE_WBBUSY: begin
@@ -282,6 +303,9 @@ always @(posedge i_clk) begin
             if (t_ReceivedByte == 8'h00) begin
               r_cs <= 1'b0;
               r_BytesExpected <= 1;
+            end else begin
+              o_op_failed <= 1'b1;
+              r_State <= STATE_IDLE;
             end
           end
 
@@ -292,6 +316,9 @@ always @(posedge i_clk) begin
               r_cs <= 1'b0;
               r_BytesExpected <= 2;
               r_ReadyToSend <= 1'b1;
+            end else begin
+              o_op_failed <= 1'b1;
+              r_State <= STATE_IDLE;
             end
           end
         endcase
@@ -343,7 +370,7 @@ always @(posedge i_clk) begin
     end
   end
 
-  if (!i_cd && r_cd) begin
+  if (!w_cd && r_cd) begin
     // new card inserted
     o_mosi = 1'b1;
     o_cs = 1'b1;
@@ -360,7 +387,7 @@ assign w_ram_addr = r_ram_addr;
 assign w_ram_din = o_data_req ? i_din : r_DataByte;
 
 assign o_sck = w_ClkBit;
-
+assign o_ready = (!r_cd && (r_State >= STATE_IDLE));
 assign o_dout = w_ram_dout;
 
 assign o_led[15:12] = r_State;
@@ -375,6 +402,7 @@ initial begin
   o_cs = 1'b1;
   o_data_req = 1'b0;
   o_op_complete = 1'b0;
+  o_op_failed = 1'b0;
 end
 
 endmodule

@@ -18,6 +18,7 @@ module top(
 `ifdef SD_CARD_SUPPORT
   input miso,
   input cd,
+  input wp,
   output mosi,
   output cs,
   output sck,
@@ -223,6 +224,7 @@ fd1771 fd1771_inst (
 `ifdef SD_CARD_SUPPORT
   .i_miso(miso),
   .i_cd(cd),
+  .i_wp(wp),
   .i_floppy_sel(w_floppy_sel),
   .i_side_sel(w_side_sel),
   .o_mosi(mosi),

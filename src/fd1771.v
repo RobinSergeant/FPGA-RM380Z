@@ -25,6 +25,7 @@ module fd1771(
 `ifdef SD_CARD_SUPPORT
   input i_miso,
   input i_cd,
+  input i_wp,
   input i_floppy_sel,
   input i_side_sel,
   output o_mosi,
@@ -45,6 +46,8 @@ wire w_sd_write;
 wire w_sd_data_req;
 wire w_sd_data_ack;
 wire w_sd_op_complete;
+wire w_sd_op_failed;
+wire w_sd_ready;
 wire [7:0] w_sd_dout;
 wire [7:0] w_sd_din;
 wire [31:0] w_sd_address;
@@ -60,9 +63,11 @@ sd_card sd_card_inst (
   .i_din(w_sd_din),
   .o_data_req(w_sd_data_req),
   .o_op_complete(w_sd_op_complete),
+  .o_op_failed(w_sd_op_failed),
   .o_mosi(o_mosi),
   .o_cs(o_cs),
   .o_sck(o_sck),
+  .o_ready(w_sd_ready),
   .o_dout(w_sd_dout),
   .o_led(o_led)
 );
@@ -100,15 +105,28 @@ localparam WRITE_SECTOR     = 4'b1010;
 localparam FORCE_INTERRUPT  = 4'b1101;
 
 // status bit indexes
-localparam NOT_READY    = 7;
-localparam DATA_REQUEST = 1;
-localparam BUSY         = 0;
+localparam NOT_READY        = 7;
+localparam WRITE_PROTECT    = 6;
+localparam WRITE_FAULT      = 5;
+localparam RECORD_NOT_FOUND = 4;
+localparam CRC_ERROR        = 3;
+localparam DATA_REQUEST     = 1;
+localparam BUSY             = 0;
+
+`ifdef FDS_SUPPORT
+localparam TRACKS           = 77;
+localparam SECTORS          = 26;
+`else
+localparam TRACKS           = 40;
+localparam SECTORS          = 16;
+`endif
+localparam SECTOR_SIZE      = 128;
 
 reg [7:0] r_data = 0;
 reg [7:0] r_track = 0;
 reg [7:0] r_sector = 0;
 reg [3:0] r_command = 0;
-reg [7:0] r_status = 1'b1 << NOT_READY;
+reg [7:0] r_status = 0;
 
 reg r_RE = 1'b1;
 reg r_WE = 1'b1;
@@ -134,10 +152,10 @@ always @(posedge CLK) begin
     case (A)
       COMMAND_REGISTER: begin
         r_command <= ~DAL[7:4];
+        r_status[6:0] <= {7{1'b0}};
 
         case (~DAL[7:4])
           RESTORE: begin
-            r_status[NOT_READY] <= 1'b0;
             r_track <= 0;
           end
 
@@ -151,13 +169,23 @@ always @(posedge CLK) begin
 
 `ifdef SD_CARD_SUPPORT
           READ_SECTOR: begin
-            r_status[BUSY] <= 1'b1;
-            r_sd_read <= 1'b1;
+            if ((r_track >= TRACKS) || (r_sector > SECTORS)) begin
+              r_status[RECORD_NOT_FOUND] <= 1'b1;
+            end else if (w_sd_ready) begin
+              r_status[BUSY] <= 1'b1;
+              r_sd_read <= 1'b1;
+            end
           end
 
           WRITE_SECTOR: begin
-            r_status[BUSY] <= 1'b1;
-            r_sd_write <= 1'b1;
+            if ((r_track >= TRACKS) || (r_sector > SECTORS)) begin
+              r_status[RECORD_NOT_FOUND] <= 1'b1;
+            end else if (i_wp) begin
+              r_status[WRITE_PROTECT] <= 1'b1;
+            end else if (w_sd_ready) begin
+              r_status[BUSY] <= 1'b1;
+              r_sd_write <= 1'b1;
+            end
           end
 `else
           READ_SECTOR, WRITE_SECTOR: begin
@@ -233,9 +261,16 @@ always @(posedge CLK) begin
 
 `ifdef SD_CARD_SUPPORT
   r_status[DATA_REQUEST] <= w_sd_data_req;
+  r_status[NOT_READY] <= ~w_sd_ready;
 
-  if (w_sd_op_complete) begin
+  if (w_sd_op_complete || w_sd_op_failed || !w_sd_ready)
     r_status[BUSY] <= 1'b0;
+ 
+  if (w_sd_op_failed) begin
+    if (r_command == WRITE_SECTOR)
+      r_status[WRITE_FAULT] <= 1'b1;
+    else
+      r_status[CRC_ERROR] <= 1'b1;
   end
 `endif
 
@@ -253,17 +288,9 @@ always @(*) begin
 end
 
 `ifdef SD_CARD_SUPPORT
-`ifdef FDS_SUPPORT
-// 77 tracks (0-76), 128 byte sectore (1-26)
 // Data for Tn side 2 comes immidiately after data for Tn side 1 (DSSD)
 // Data for different disks is offset by 512K
-assign w_sd_address = (i_floppy_sel << 19) + (((((r_track * 2) + i_side_sel) * 26) + (r_sector - 1)) * 128);
-`else
-// 2048 byte tracks (0-39), 128 byte sectors (1-16)
-// Data for Tn side 2 comes immidiately after data for Tn side 1 (DSSD)
-// Data for different disks is offset by 512K (even though only 160K is used for each)
-assign w_sd_address = (i_floppy_sel << 19) + (r_track << 12) + (i_side_sel << 11) + ((r_sector - 1) << 7);
-`endif
+assign w_sd_address = (i_floppy_sel << 19) + (((((r_track * 2) + i_side_sel) * SECTORS) + (r_sector - 1)) * SECTOR_SIZE);
 assign w_sd_din = r_data;
 assign w_sd_read = r_sd_read;
 assign w_sd_write = r_sd_write;
