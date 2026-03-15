@@ -15,6 +15,7 @@ module top(
   inout PS2Clk,
   inout PS2Data,
   input btnU,
+  input RsRx,
 `ifdef SD_CARD_SUPPORT
   input miso,
   input cd,
@@ -24,6 +25,7 @@ module top(
   output sck,
   output [15:0] led,
 `endif
+  output RsTx,
   output [3:0] vgaRed,
   output [3:0] vgaGreen,
   output [3:0] vgaBlue,
@@ -197,7 +199,7 @@ display display_inst (
 
 /********************************************************************************
  *                                                                              *
- * Keyboard and floppy controller                                               *
+ * Keyboard, floppy controller and serial port                                  *
  *                                                                              *
  ********************************************************************************/
 
@@ -236,6 +238,21 @@ fd1771 fd1771_inst (
   .RE(w_fdc_RE),
   .A(w_fdc_A),
   .DAL(w_fdc_DAL)
+);
+
+wire w_sio_WR;
+wire w_sio_RD;
+wire w_sio_CD;
+wire [7:0] w_sio_D;
+
+intel_8251a sio_inst (
+  .CLK(w_clk_cpu),
+  .WR(w_sio_WR),
+  .RD(w_sio_RD),
+  .CD(w_sio_CD),
+  .RxD(RsRx),
+  .TxD(RsTx),
+  .D(w_sio_D)
 );
 
 /********************************************************************************
@@ -465,9 +482,11 @@ xpm_cdc_handshake_port1_inst (
 `ifdef FDS_SUPPORT
 localparam FD1771_PORT = 8'hE0;
 localparam FDC_PORT    = 8'hE4;
+localparam SIO_PORT    = 8'hE8;
 `else
 localparam FD1771_PORT = 8'hC0;
 localparam FDC_PORT    = 8'hC4;
+localparam SIO_PORT    = 8'hC8;
 `endif
 localparam PORT_MASK = 8'b11111100;
 
@@ -576,11 +595,12 @@ always @(*) begin
   r_ram_we = 1'b0;
 
   if (w_IORQ == 1'b0) begin
-    if ((w_A[7:0] & PORT_MASK) == FD1771_PORT) begin
+    if ((w_A[7:0] & PORT_MASK) == FD1771_PORT)
       r_Dout = w_fdc_DAL;
-    end else begin
+    else if ((w_A[7:0] & PORT_MASK) == SIO_PORT)
+      r_Dout = w_sio_D;
+    else
       r_Dout = 8'hFF;
-    end
   end else begin
     if ((w_A[15:8] == 8'hFB) || ((w_A[15:8] == 8'h1B) && !r_port0[7])) begin
       case (w_A[7:0])
@@ -660,5 +680,10 @@ assign w_fdc_A = w_A[1:0];
 assign w_fdc_DAL = (w_RD == 1'b1) ? w_D : {8{1'bz}};
 assign w_floppy_sel = r_floppy_sel;
 assign w_side_sel = r_side_sel;
+
+assign w_sio_WR = ~((w_IORQ == 1'b0) && (w_WR == 1'b0) && ((w_A[7:0] & PORT_MASK) == SIO_PORT));
+assign w_sio_RD = ~((w_IORQ == 1'b0) && (w_RD == 1'b0) && ((w_A[7:0] & PORT_MASK) == SIO_PORT));
+assign w_sio_CD = w_A[0];
+assign w_sio_D = (w_RD == 1'b1) ? w_D : {8{1'bz}};
 
 endmodule
