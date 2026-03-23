@@ -7,6 +7,13 @@
  * This module implements a subset of the Intel 8251A interface, providing only *
  * the signals and commands used by the 380Z ROM routines.                      *
  *                                                                              *
+ * The mode is always set to 8N1 async (8 bits, no parity, 1 stop bit) by the   *
+ * firmware and communication software such as Kermit.                          *
+ *                                                                              *
+ * The baud rate is fixed at 9600 baud as the Z80 CTC (normally used as the     *
+ * clock generator) is not included.  This was the maximum baud rate supported  *
+ * by the firmware.                                                             *
+ *                                                                              *
  ********************************************************************************/
 
 `timescale 1ns / 1ps
@@ -42,7 +49,6 @@ reg [7:0] r_Dout;
 reg [7:0] r_Status;
 reg [7:0] r_ReceivedData;
 reg [7:0] r_OutputData;
-reg [7:0] r_Mode = 0;
 reg r_DataReceived = 1'b0;
 reg r_DataToSend = 1'b0;
 
@@ -54,7 +60,7 @@ always @(posedge CLK) begin
     if (CD == 1'b1) begin
       case (r_State)
         STATE_IDLE: begin
-          r_Mode <= D;
+          // mode not checked as should always be 8N1
           r_State <= STATE_READY;
         end
 
@@ -63,6 +69,7 @@ always @(posedge CLK) begin
             // internal reset
             r_State <= STATE_IDLE;
           end
+          // Tx and Rx enable bits not checked (as always set)
         end
       endcase
     end else begin
@@ -131,6 +138,7 @@ always @(posedge CLK) begin
             r_ReceivedData <= r_InFrame[7:0];
             r_DataReceived <= 1'b1;
           end
+          // NB framing error status bit not set as never checked/cleared by firmware
           r_State <= STATE_READY;
       end
     end
