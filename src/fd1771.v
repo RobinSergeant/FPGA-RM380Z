@@ -31,8 +31,8 @@ module fd1771(
   output o_mosi,
   output o_cs,
   output o_sck,
-  output [15:0] o_led,
 `endif
+  output [1:0] o_led,
   input WE,
   input RE,
   input [1:0] A,
@@ -68,8 +68,7 @@ sd_card sd_card_inst (
   .o_cs(o_cs),
   .o_sck(o_sck),
   .o_ready(w_sd_ready),
-  .o_dout(w_sd_dout),
-  .o_led(o_led)
+  .o_dout(w_sd_dout)
 );
 
 `else
@@ -125,8 +124,8 @@ localparam SECTOR_SIZE      = 128;
 reg [7:0] r_data = 0;
 reg [7:0] r_track = 0;
 reg [7:0] r_sector = 0;
-reg [3:0] r_command = 0;
 reg [7:0] r_status = 0;
+reg r_WriteCmd = 1'b0;
 
 reg r_RE = 1'b1;
 reg r_WE = 1'b1;
@@ -151,7 +150,7 @@ always @(posedge CLK) begin
   if ((WE == 1'b0) && (r_WE == 1'b1)) begin
     case (A)
       COMMAND_REGISTER: begin
-        r_command <= ~DAL[7:4];
+        r_WriteCmd <= 1'b0;
         r_status[6:0] <= {7{1'b0}};
 
         case (~DAL[7:4])
@@ -183,12 +182,14 @@ always @(posedge CLK) begin
             end else if (i_wp) begin
               r_status[WRITE_PROTECT] <= 1'b1;
             end else if (w_sd_ready) begin
+              r_WriteCmd <= 1'b1;
               r_status[BUSY] <= 1'b1;
               r_sd_write <= 1'b1;
             end
           end
 `else
           READ_SECTOR, WRITE_SECTOR: begin
+            r_WriteCmd <= ~DAL[5];
             r_status[BUSY] <= 1'b1;
             r_status[DATA_REQUEST] <= 1'b1;
             r_offset <= 0;
@@ -211,9 +212,7 @@ always @(posedge CLK) begin
 
       DATA_REGISTER: begin
         r_data <= ~DAL;
-        if ((r_command == WRITE_SECTOR) &&
-            (r_status[BUSY] == 1'b1))
-        begin
+        if (r_WriteCmd && r_status[BUSY]) begin
 `ifdef SD_CARD_SUPPORT
           r_sd_data_ack <= 1'b1;
 `else
@@ -227,7 +226,7 @@ always @(posedge CLK) begin
   if ((RE == 1'b0) && 
       (r_RE == 1'b1) &&
       (A == DATA_REGISTER) &&
-      (r_command == READ_SECTOR) &&
+      (r_WriteCmd == 1'b0) &&
       (r_status[BUSY] == 1'b1))
   begin
 `ifdef SD_CARD_SUPPORT
@@ -267,7 +266,7 @@ always @(posedge CLK) begin
     r_status[BUSY] <= 1'b0;
  
   if (w_sd_op_failed) begin
-    if (r_command == WRITE_SECTOR)
+    if (r_WriteCmd)
       r_status[WRITE_FAULT] <= 1'b1;
     else
       r_status[CRC_ERROR] <= 1'b1;
@@ -301,6 +300,9 @@ assign w_floppy_addr = (r_track << 11) + ((r_sector - 1) << 7) + r_offset;
 assign w_floppy_we = r_floppy_we;
 assign w_floppy_din = r_data;
 `endif
+
+assign o_led[0] = (r_status[NOT_READY] || r_status[BUSY]);
+assign o_led[1] = (r_WriteCmd && r_status[BUSY]);
 
 assign DAL = (RE == 1'b0) ? ~r_DALout : {8{1'bz}};
 

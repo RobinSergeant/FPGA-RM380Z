@@ -28,8 +28,7 @@ module sd_card(
   output reg o_cs,
   output o_sck,
   output o_ready,
-  output [7:0] o_dout,
-  output [15:0] o_led
+  output [7:0] o_dout
 );
 
 wire w_cd;
@@ -100,7 +99,6 @@ reg r_ReadyToSend = 1'b0;
 
 reg [3:0] r_State = STATE_INIT;
 reg [47:0] r_Command = {48{1'b1}};
-reg [7:0] r_ResponseByte = 8'h00;
 reg [7:0] r_ReceivedByte = 8'h01;
 reg [7:0] r_DataByte = 8'h00;
 reg [9:0] r_BytesExpected = 10; // stay in INIT state for 80 clocks
@@ -265,7 +263,6 @@ always @(posedge i_clk) begin
         // process R1 command response
         r_ReadyToSend <= 1'b0;
         r_cs <= 1'b1;
-        r_ResponseByte <= t_ReceivedByte;
 
         case (r_State)
           STATE_CMD0: begin
@@ -416,13 +413,6 @@ assign w_ram_din = o_data_req ? i_din : r_DataByte;
 assign o_sck = w_ClkBit;
 assign o_ready = (!r_cd && (r_State >= STATE_IDLE));
 assign o_dout = w_ram_dout;
-
-assign o_led[15:12] = r_State;
-assign o_led[11] = 1'b0;
-assign o_led[10] = ~i_cd;
-assign o_led[9] = r_SDHC;
-assign o_led[8] = 1'b0;
-assign o_led[7:0] = r_ResponseByte;
 
 initial begin
   o_mosi = 1'b1;

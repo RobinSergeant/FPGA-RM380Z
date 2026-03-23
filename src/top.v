@@ -23,8 +23,8 @@ module top(
   output mosi,
   output cs,
   output sck,
-  output [15:0] led,
 `endif
+  output [1:0] led,
   output RsTx,
   output [3:0] vgaRed,
   output [3:0] vgaGreen,
@@ -232,8 +232,8 @@ fd1771 fd1771_inst (
   .o_mosi(mosi),
   .o_cs(cs),
   .o_sck(sck),
-  .o_led(led),
 `endif
+  .o_led(led),
   .WE(w_fdc_WE),
   .RE(w_fdc_RE),
   .A(w_fdc_A),
