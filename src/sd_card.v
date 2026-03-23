@@ -56,6 +56,7 @@ single_port_ram #(.DEPTH(512)) block_cache (
 
 localparam CMD0   = {2'b01, 6'd00, 8'h00, 8'h00, 8'h00, 8'h00, 8'h95};  // GO_IDLE_STATE
 localparam CMD8   = {2'b01, 6'd08, 8'h00, 8'h00, 8'h01, 8'hAA, 8'h87};  // SEND_IF_COND
+localparam CMD16  = {2'b01, 6'd16, 8'h00, 8'h00, 8'h02, 8'h00, 8'h01};  // SET_BLOCKLEN
 localparam CMD17  = {2'b01, 6'd17, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // READ_SINGLE_BLOCK
 localparam CMD24  = {2'b01, 6'd24, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // WRITE_BLOCK
 localparam CMD55  = {2'b01, 6'd55, 8'h00, 8'h00, 8'h00, 8'h00, 8'h01};  // APP_CMD
@@ -68,6 +69,7 @@ localparam STATE_CMD8   = 4'b0010;
 localparam STATE_CMD55  = 4'b0011;
 localparam STATE_ACMD41 = 4'b0100;
 localparam STATE_CMD58  = 4'b0101;
+localparam STATE_CMD16  = 4'b0110;
 localparam STATE_IDLE   = 4'b1000;
 localparam STATE_CMD17  = 4'b1001;  // block read states
 localparam STATE_RBDATA = 4'b1010;
@@ -108,6 +110,7 @@ reg r_WriteOp = 1'b0;
 reg r_cs = 1'b1;
 reg r_cd = 1'b0;
 reg r_SDHC = 1'b0;
+reg r_LegacyCard = 1'b0;
 
 reg [31:0] t_BlockAddress;
 reg [7:0] t_ReceivedByte;
@@ -156,9 +159,15 @@ always @(posedge i_clk) begin
               // bit 30 of OCR contains the CCS
               r_SDHC <= t_ReceivedByte[6];
             end else if (r_BytesExpected == 1) begin
-              // card init finished
               r_cs <= 1'b1;
-              r_State <= STATE_IDLE;
+              if (r_SDHC) begin
+                // SDHC card init finished
+                r_State <= STATE_IDLE;
+              end else begin
+                // make sure block length is 512 for SDSC
+                r_Command <= CMD16;
+                r_State <= STATE_CMD16;
+              end
             end
           end
 
@@ -270,7 +279,12 @@ always @(posedge i_clk) begin
             if (t_ReceivedByte == 8'h01) begin
               r_cs <= 1'b0;
               r_BytesExpected <= 4;
+            end else if (t_ReceivedByte == 8'h05) begin
+              // illegal command response expected for legacy 1.x card
+              r_Command <= CMD55;
+              r_State <= STATE_CMD55;
             end
+            r_LegacyCard <= t_ReceivedByte[2];
           end
 
           STATE_CMD55: begin
@@ -286,9 +300,22 @@ always @(posedge i_clk) begin
               r_Command <= CMD55;
               r_State <= STATE_CMD55;
             end else if (t_ReceivedByte == 8'h00) begin
-              // card ready, fetch CCS
-              r_Command <= CMD58;
-              r_State <= STATE_CMD58;
+              if (r_LegacyCard) begin
+                // card ready, make sure block length is 512
+                r_Command <= CMD16;
+                r_State <= STATE_CMD16;
+              end else begin
+                // card ready, fetch CCS
+                r_Command <= CMD58;
+                r_State <= STATE_CMD58;
+              end
+            end
+          end
+
+          STATE_CMD16: begin
+            if (t_ReceivedByte == 8'h00) begin
+              // SDSC card init finished
+              r_State <= STATE_IDLE;
             end
           end
 
