@@ -31,6 +31,7 @@ Features:
   - Without an SD card only drive A: is avaiable.
   - BRAM disk image can only be changed by rebuilding the project and must be bootable.
   - Both SDSC and SDHC card types supported by the SD host controller.
+  - Seperate disk activity and disk write LEDs.
 - Can be built as a MDS (5.25" floppy) or FDS (8" inch floppy) system.
   - FDS requires an SD card due to the lack of free BRAM.
   - FDS provides nearly 1 megabyte of storage (~250K per logical drive).
@@ -87,6 +88,41 @@ Under project settings define the following optional configuration flags:
 Then use the Vivado Clocking Wizard to generate the clock_generator IP which should output the following clocks:
 - clk_vga (requested: 25.175, actual: 25.17483)
 - clk_cpu (requested: 10, actual 10.00000)
+## SD card use and preperation
+As no FAT filesystem is used care must be taken when writing disk images to the SD card, as specifying the wrong device could **DESTROY** your hard drive!
+
+Firstly use `imdcat` to create raw binary disk images from imd files, e.g.
+```
+imdcat -c 0:39 -s 1:16 -o zork_demo.bin zork_demo.imd
+```
+for a 5.25" floppy image (MDS) or:
+```
+imdcat -c 0:76 -s 1:26 -o zork1.bin zork1.imd
+```
+for an 8" floppy image.  If the floppy images are single sided, two must be combined to create a double sided disk.  This can be done using the included
+`ss_to_ds.py` tool, e.g.
+```
+ss_to_ds.py -o disk1.bin zork1.bin zork2.bin
+```
+Once two double sided floppy bin images have been created these can be written to the SD card using the DD tool.  The first image should be written to sector 0,
+which overwrites the MBR.  The second should be written at a 512K seek offset (address 524288 in bytes).
+```
+sudo dd if=disk1.bin of=/dev/{sdcard} bs=512K conv=notrunc,fsync status=progress
+sudo dd if=disk2.bin of=/dev/{sdcard} bs=512K seek=1 conv=notrunc,fsync status=progress
+```
+Use the following command to identify your {sdcard} device string.  In my case it was sdb, but **DO NOT** use this without verifying.
+```
+lsblk -f
+```
+All being well you should then be able to boot from drive A: using the 'B' command, or drive B: using 'X'.  The following logical drive mapping applies:
+- Disk 1, side 1 -> A:
+- Disk 1, side 2 -> C:
+- Disk 2, side 1 -> B:
+- Disk 2, side 2 -> D:
+
+A solid green LED indicates an SD card initialisation problem (try a different card).  Under normal operation the LED should only illuminate during disk access.
+I have tested the SD controller with a variety of SDSC and SDHC cards so please let me know if you encounter a card that does not work.
+
 # TODO
 The project is still very much in development and at least the following work remains:
 - To improve timing accuracy.  I am currently running the CPU at 10Mhz without wait states, whereas the original machine ran at only 4Mhz with wait states!
