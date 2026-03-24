@@ -298,11 +298,13 @@ always @(posedge i_clk) begin
               r_State <= STATE_CMD55;
             end else if (t_ReceivedByte == 8'h00) begin
               if (r_LegacyCard) begin
-                // card ready, make sure block length is 512
+                // v1.x card ready, must be SDSC
+                r_SDHC <= 1'b0;
+                // make sure block length is 512
                 r_Command <= CMD16;
                 r_State <= STATE_CMD16;
               end else begin
-                // card ready, fetch CCS
+                // v2.0 card ready, fetch CCS
                 r_Command <= CMD58;
                 r_State <= STATE_CMD58;
               end
