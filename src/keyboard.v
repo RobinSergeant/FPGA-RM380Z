@@ -29,7 +29,7 @@ module keyboard(
 
 wire i_ps2_clk;
 wire w_ps2_clk;
-debounce #(.DEBOUNCE_LIMIT(20)) debounce_clk_inst (
+debounce #(.DEBOUNCE_LIMIT(3 * `CPU_SPEED_MHZ)) debounce_clk_inst (
 .i_clk(i_clk),
 .i_in(i_ps2_clk),
 .o_out(w_ps2_clk)
@@ -37,7 +37,7 @@ debounce #(.DEBOUNCE_LIMIT(20)) debounce_clk_inst (
 
 wire i_ps2_data;
 wire w_ps2_data;
-debounce #(.DEBOUNCE_LIMIT(20)) debounce_data_inst (
+debounce #(.DEBOUNCE_LIMIT(3 * `CPU_SPEED_MHZ)) debounce_data_inst (
 .i_clk(i_clk),
 .i_in(i_ps2_data),
 .o_out(w_ps2_data)
@@ -67,11 +67,11 @@ localparam SET_LEDS     = 8'hED;
 // ascii codes
 localparam NOKEY        = 8'h80;
 
-// delay and timeout constants (adjust if not using a 10 MHz clock)
-localparam RESPONSE_TIMEOUT  = 100000;  // wait 10ms for command response before retrying
-localparam SYNC_CLOCK_PERIOD = 1200;    // pull clock low for 120us to re-sync with device
-localparam RTS_CLOCK_PERIOD  = 1200;    // pull clock low for 120us during RTS handshake
-localparam RTS_DATA_PERIOD   = 200;     // pull data low 20us before the clock is released
+// delay and timeout constants
+localparam integer RESPONSE_TIMEOUT  = 10_000 * `CPU_SPEED_MHZ; // wait 10ms for command response before retrying
+localparam integer SYNC_CLOCK_PERIOD = 120    * `CPU_SPEED_MHZ; // pull clock low for 120us to re-sync with device
+localparam integer RTS_CLOCK_PERIOD  = 120    * `CPU_SPEED_MHZ; // pull clock low for 120us during RTS handshake
+localparam integer RTS_DATA_PERIOD   = 20     * `CPU_SPEED_MHZ; // pull data low 20us before the clock is released
 
 reg [3:0] r_State = IDLE;
 reg [7:0] r_ScanCode = 0;

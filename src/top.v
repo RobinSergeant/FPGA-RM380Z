@@ -47,7 +47,7 @@ module top(
 
 wire w_reset_button;
 
-debounce #(.DEBOUNCE_LIMIT(1000000)) debounce_btnU_inst (
+debounce #(.DEBOUNCE_LIMIT(20_000 * `CPU_SPEED_MHZ)) debounce_btnU_inst (
 .i_clk(clk),
 .i_in(btnU),
 .o_out(w_reset_button)

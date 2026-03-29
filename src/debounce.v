@@ -11,7 +11,7 @@
 `timescale 1ns / 1ps
 
 module debounce#(
-  parameter DEBOUNCE_LIMIT = 10
+  parameter integer DEBOUNCE_LIMIT = 10
 )(
   input i_clk,
   input i_in,

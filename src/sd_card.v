@@ -32,7 +32,7 @@ module sd_card(
 );
 
 wire w_cd;
-debounce #(.DEBOUNCE_LIMIT(100000)) debounce_cd_inst (
+debounce #(.DEBOUNCE_LIMIT(20_000 * `CPU_SPEED_MHZ)) debounce_cd_inst (
 .i_clk(i_clk),
 .i_in(i_cd),
 .o_out(w_cd)
@@ -78,7 +78,12 @@ localparam STATE_WBDATA = 4'b1101;
 localparam STATE_WBDRT  = 4'b1110;
 localparam STATE_WBBUSY = 4'b1111;
 
-reg [4:0] r_ClkCounter = 0;
+/* Clock rate must be below 400 kHz during initialisation
+   At 10MHz: 10,000,000 / 2^5 (32) = 312.5 kHz
+   At 4MHz:   4,000,000 / 2^5 (16) = 250.0 kHz */
+localparam CLOCK_BIT = ((`CPU_SPEED_HZ / 16) < 400_000) ? 3 : 4;
+
+reg [CLOCK_BIT:0] r_ClkCounter = 0;
 reg r_PrevClkBit = 0;
 
 wire w_ClkBit;
@@ -90,8 +95,7 @@ always @(posedge i_clk) begin
   r_ClkCounter <= r_ClkCounter + 1;
 end
 
-// At 10MHz: 10,000,000 / 2^5 (32) = 312.5 kHz
-assign w_ClkBit = r_ClkCounter[4];
+assign w_ClkBit = r_ClkCounter[CLOCK_BIT];
 assign w_RisingEdge = (~r_PrevClkBit & w_ClkBit);
 assign w_FallingEdge = (r_PrevClkBit & ~w_ClkBit);
 

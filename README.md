@@ -4,7 +4,7 @@ The Basys 3 includes an AMD (Xilinx) Artix 7 FPGA chip (XC7A35T-1CPG236C), 12-bi
 The Artix 7 itself provides just enough BRAM for 64K of RAM, the necessary ROM files and one 80K floppy image.
 
 For persistent storage I have used this [SD card PMOD](https://digilent.com/reference/pmod/pmodsd/start) from Digilent.  Their smaller [Micro SD card PMOD](https://digilent.com/reference/pmod/pmodmicrosd/start)
-should also work, but I've not tested it.  Alternively, a smaller BRAM ram disk can be configured to boot without an SD card.
+should also work, but I've not tested it.  Alternatively, a smaller BRAM ram disk can be configured to boot without an SD card.
 
 [A-Z80](https://github.com/gdevic/A-Z80) created by Goran Devic is used as the Z80 CPU core.
 
@@ -18,7 +18,7 @@ Features:
 - HRG (High Resolution Graphics):
   - High res mode (4 colours, 320x192).
   - Medium res mode (16 colours, 160x96 with two pages).
-  - Upscaled to 640x384 for display (lower 96 pixels are/were only used by the VDU-80).
+  - Up-scaled to 640x384 for display (lower 96 pixels are/were only used by the VDU-80).
 - Outputs a 60Hz 640x480 VGA signal.
 - SIO4 serial port implemented using the on board USB FTDI UART.
   - Intel 8251A compatible SIO module, supporting 8N1 at 9600 baud.
@@ -28,10 +28,10 @@ Features:
 - Floppy controller providing a FD1771 compatible interface to external SD card or a preloaded 80K BRAM disk image.
   - Both sector reads and writes are implemented.
   - With an SD card all 4 logical drives are available (A:, B:, C: and D:).
-  - Without an SD card only drive A: is avaiable.
+  - Without an SD card only drive A: is available.
   - BRAM disk image can only be changed by rebuilding the project and must be bootable.
   - Both SDSC and SDHC card types supported by the SD host controller.
-  - Seperate disk activity and disk write LEDs.
+  - Separate disk activity and disk write LEDs.
 - Can be built as a MDS (5.25" floppy) or FDS (8" inch floppy) system.
   - FDS requires an SD card due to the lack of free BRAM.
   - FDS provides nearly 1 megabyte of storage (~250K per logical drive).
@@ -74,21 +74,26 @@ imdcat -h 0 -o 380ZDS6A.bin 380ZDS6A.IMD
 bin_to_mem.py -m 81920 380ZDS6A.bin
 ```
 NB `imdcat` can be built from source available at the [dumpfloppy repository](https://github.com/johnkw/dumpfloppy).
-## Building with Vivavdo
-I am using Vivavdo 2025.1, but other editions should also work.  Simply create a new project for the board and import the following:
+## Building with Vivado
+I am using Vivado 2025.1, but other editions should also work.  Simply create a new project for the board and import the following:
 - All Verilog files from the `src` folder.
 - The constraints files from the `constraints` folder.
 - The MEM files created in the previous section.
 - Necessary files from [A-Z80](https://github.com/gdevic/A-Z80).  See README in repository for further details.
 
-Under project settings define the following optional configuration flags:
-- FDS_SUPPORT to build the FDS variant (requires SD_CARD_SUPPORT)
-- SD_CARD_SUPPORT to use an external SD card PMOD for persistent storage instead of BRAM.
-
-Then use the Vivado Clocking Wizard to generate the clock_generator IP which should output the following clocks:
+Use the Vivado Clocking Wizard to generate the clock_generator IP which should output the following clocks:
 - clk_vga (requested: 25.175, actual: 25.17483)
-- clk_cpu (requested: 10, actual 10.00000)
-## SD card use and preperation
+- clk_cpu (requested: 4.7, actual 4.72005)
+
+NB Unfortunately the clocking wizard cannot achieve 4 MHz, so 4.72 Mhz is the closest that we can achieve cleanly.  Higher speeds are also
+possible, i.e. 8 or 10 Mhz.
+
+Under project settings define the following configuration flags:
+- CPU_SPEED_HZ = 4_720_050 (or rate chosen for clk_cpu in hertz)
+- CPU_SPEED_MHZ = 4.72005 (or rate chosen for clk_cpu)
+- FDS_SUPPORT = 1 (optional to build the FDS variant which requires SD_CARD_SUPPORT)
+- SD_CARD_SUPPORT = 1 (optional to use an external SD card PMOD for persistent storage instead of BRAM)
+## SD card use and preparation
 As no FAT filesystem is used care must be taken when writing disk images to the SD card, as specifying the wrong device could **DESTROY** your hard drive!
 
 Firstly use `imdcat` to create raw binary disk images from imd files, e.g.
@@ -120,12 +125,12 @@ All being well you should then be able to boot from drive A: using the 'B' comma
 - Disk 2, side 1 -> B:
 - Disk 2, side 2 -> D:
 
-A solid green LED indicates an SD card initialisation problem (try a different card).  Under normal operation the LED should only illuminate during disk access.
+A solid green LED indicates an SD card initialization problem (try a different card).  Under normal operation the LED should only illuminate during disk access.
 I have tested the SD controller with a variety of SDSC and SDHC cards so please let me know if you encounter a card that does not work.
 
 # TODO
 The project is still very much in development and at least the following work remains:
-- To improve timing accuracy.  I am currently running the CPU at 10Mhz without wait states, whereas the original machine ran at only 4Mhz with wait states!
+- To improve timing accuracy.  I am currently running the CPU at 4.72 MHz without wait states, whereas the original machine ran at only 4 MHz with wait states!
 - To implement some of the missing port control flags, e.g. to inhibit VDU output while displaying HRG.
 - To investigate Vivado warnings.
   

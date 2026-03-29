@@ -28,7 +28,8 @@ module intel_8251a(
   inout [7:0] D
 );
 
-localparam CYCLES_PER_BIT = 1042; // 9600 baud
+localparam BAUD_RATE = 9600;
+localparam CYCLES_PER_BIT = (`CPU_SPEED_HZ + (BAUD_RATE / 2)) / BAUD_RATE;
 
 localparam STATE_IDLE     = 4'b00;
 localparam STATE_READY    = 4'b01;
@@ -39,8 +40,8 @@ reg r_RD = 1'b1;
 reg r_WR = 1'b1;
 
 reg [1:0] r_State = STATE_READY;
-reg [10:0] r_TransmitCounter = 0;
-reg [10:0] r_ReceiveCounter = 0;
+reg [$clog2(CYCLES_PER_BIT)-1:0] r_TransmitCounter = 0;
+reg [$clog2(CYCLES_PER_BIT)-1:0] r_ReceiveCounter = 0;
 reg [8:0] r_OutFrame = {9{1'b1}};
 reg [8:0] r_InFrame;
 reg [3:0] r_BitsToSend = 0;
@@ -146,7 +147,7 @@ always @(posedge CLK) begin
 end
 
 always @(*) begin
-  r_Status = {1'b1, 4'b000000, ~r_DataToSend, r_DataReceived, ~r_DataToSend};
+  r_Status = {1'b1, 4'b0000, ~r_DataToSend, r_DataReceived, ~r_DataToSend};
   r_Dout = (CD) ? r_Status : r_ReceivedData;
 end
 
