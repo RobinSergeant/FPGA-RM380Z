@@ -95,7 +95,7 @@ always @(posedge i_clk) begin
   r_ClkCounter <= r_ClkCounter + 1;
 end
 
-assign w_ClkBit = r_ClkCounter[CLOCK_BIT];
+assign w_ClkBit = o_ready ? r_ClkCounter[0] : r_ClkCounter[CLOCK_BIT];
 assign w_RisingEdge = (~r_PrevClkBit & w_ClkBit);
 assign w_FallingEdge = (r_PrevClkBit & ~w_ClkBit);
 
@@ -403,7 +403,7 @@ always @(posedge i_clk) begin
   if (!w_cd && r_cd) begin
     // new card inserted
     o_mosi = 1'b1;
-    o_cs = 1'b1;
+    o_cs <= 1'b1;
     r_cs <= 1'b1;
     r_ReadyToSend <= 1'b0;
     r_BlockValid <= 1'b0;
