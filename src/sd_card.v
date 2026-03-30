@@ -95,7 +95,7 @@ always @(posedge i_clk) begin
   r_ClkCounter <= r_ClkCounter + 1;
 end
 
-assign w_ClkBit = o_ready ? r_ClkCounter[0] : r_ClkCounter[CLOCK_BIT];
+assign w_ClkBit = o_ready ? r_ClkCounter[1] : r_ClkCounter[CLOCK_BIT];
 assign w_RisingEdge = (~r_PrevClkBit & w_ClkBit);
 assign w_FallingEdge = (r_PrevClkBit & ~w_ClkBit);
 
