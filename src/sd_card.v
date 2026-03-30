@@ -402,7 +402,7 @@ always @(posedge i_clk) begin
 
   if (!w_cd && r_cd) begin
     // new card inserted
-    o_mosi = 1'b1;
+    o_mosi <= 1'b1;
     o_cs <= 1'b1;
     r_cs <= 1'b1;
     r_ReadyToSend <= 1'b0;
