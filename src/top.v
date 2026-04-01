@@ -265,6 +265,7 @@ wire w_MREQ;
 wire w_IORQ;
 wire w_RD;
 wire w_WR;
+wire w_RFSH;
 wire w_RESET;
 wire w_WAIT;
 wire w_M1;
@@ -275,6 +276,8 @@ wire [15:0] w_A;
 wire [7:0] w_D;
 reg [7:0] r_Dout;
 reg r_M1 = 1'b1;
+reg r_MREQ = 1'b1;
+reg r_WAIT = 1'b1;
 
 z80_top_direct_n z80_instance (
   .nM1(w_M1),
@@ -282,7 +285,7 @@ z80_top_direct_n z80_instance (
   .nIORQ(w_IORQ),
   .nRD(w_RD),
   .nWR(w_WR),
-  .nRFSH(),
+  .nRFSH(w_RFSH),
   .nHALT(),
   .nBUSACK(),
 
@@ -577,8 +580,14 @@ always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
     if (!r_port0[1] && !w_M1 && r_M1) begin
       r_nmi_counter <= r_nmi_counter + 1;
     end
-  
+
+`ifdef ENABLE_WAIT_STATES
+    // insert wait state when MREQ goes low while RFSH not active
+    r_WAIT <= ~(!w_MREQ && r_MREQ && w_RFSH);
+`endif
+
     r_M1 <= w_M1;
+    r_MREQ <= w_MREQ;
   end
 end
 
@@ -667,7 +676,7 @@ assign w_ram_din = w_D;
 
 assign w_high = 1'b1;
 assign w_RESET = w_cpu_reset;
-assign w_WAIT = 1'b1;
+assign w_WAIT = r_WAIT;
 assign w_NMI = ~r_nmi_counter[3];
 assign w_D = (w_RD == 1'b0) ? r_Dout : {8{1'bz}};
 
