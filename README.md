@@ -63,15 +63,14 @@ Likewise convert the character generator rom with the following command:
 ```
 bin_to_mem.py c-gen-22.bin
 ```
-### 380ZDS6A.mem
+### floppy_image.mem
 This step is not required if using an SD card PMOD and can be skipped in that case.
 
-I've chosen one of the Smile educational disks for the BRAM floppy drive image, but any suitable boot disk in IMD format can be used.  Just
-remember to update the .INIT_FILE reference in fd1771.v to match the name of the MEM file created here.
+I've chosen one of the Smile educational disks for the BRAM floppy drive image, but any suitable boot disk in IMD format can be used.
 This is a two stage process, with `imdcat` required to create a BIN file from the IMD file, and `bin_to_mem.py` used to produce the final MEM file:
 ```
 imdcat -h 0 -o 380ZDS6A.bin 380ZDS6A.IMD
-bin_to_mem.py -m 81920 380ZDS6A.bin
+bin_to_mem.py -o floppy_image.mem -m 81920 380ZDS6A.bin
 ```
 NB `imdcat` can be built from source available at the [dumpfloppy repository](https://github.com/johnkw/dumpfloppy).
 ## Building with Vivado

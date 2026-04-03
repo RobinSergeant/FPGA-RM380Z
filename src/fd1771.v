@@ -78,7 +78,7 @@ wire [7:0] w_floppy_din;
 wire [7:0] w_floppy_dout;
 wire w_floppy_we;
 
-single_port_ram #(.DEPTH(81920), .INIT_FILE("380ZDS6A.mem")) fake_floppy_inst (
+single_port_ram #(.DEPTH(81920), .INIT_FILE("floppy_image.mem")) fake_floppy_inst (
   .clka(CLK),
   .wea(w_floppy_we),
   .addra(w_floppy_addr),
