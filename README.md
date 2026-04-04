@@ -129,7 +129,7 @@ I have tested the SD controller with a variety of SDSC and SDHC cards so please 
 
 # TODO
 The project is still very much in development and at least the following work remains:
-- To improve timing accuracy.  I am currently running the CPU at 4.72 MHz without wait states, whereas the original machine ran at only 4 MHz with wait states!
+- To improve timing accuracy.  I am currently running the CPU at 4.72 MHz, whereas the original machine ran at only 4 MHz.
 - To implement some of the missing port control flags, e.g. to inhibit VDU output while displaying HRG.
 - To investigate Vivado warnings.
   

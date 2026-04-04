@@ -515,7 +515,7 @@ always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
     r_nmi_counter <= 0;
     r_key_ready <= 1'b0;
   end else begin
-    if ((w_MREQ == 1'b0) && (w_WR == 1'b0) && ((w_A[15:8] == 8'hFB) || ((w_A[15:8] == 8'h1B) && ! r_port0[7]))) begin
+    if ((r_WAIT == 1'b0) && (w_WR == 1'b0) && ((w_A[15:8] == 8'hFB) || ((w_A[15:8] == 8'h1B) && ! r_port0[7]))) begin
       case (w_A[7:0])
         8'h00: begin
           r_hrg_port0 <= w_D;
@@ -581,10 +581,8 @@ always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
       r_nmi_counter <= r_nmi_counter + 1;
     end
 
-`ifdef ENABLE_WAIT_STATES
     // insert wait state when MREQ goes low while RFSH not active
     r_WAIT <= ~(!w_MREQ && r_MREQ && w_RFSH);
-`endif
 
     r_M1 <= w_M1;
     r_MREQ <= w_MREQ;
@@ -650,16 +648,16 @@ assign w_vram_col = r_port0[5] ? w_A[6:0] : w_A[5:0];
 assign w_vram_addra = vram_address(w_vram_row, w_vram_col, r_counter);
 assign w_vram_dina = w_D;
 assign w_aram_dina = r_port0[6] ? w_D : 0;
-assign w_aram_wea = (w_MREQ == 1'b0) && (w_WR == 1'b0) && (w_A >= 16'hF000) && (w_A <= 16'hF5FF) && !r_hrg_port0[2];
+assign w_aram_wea = (r_WAIT == 1'b0) && (w_WR == 1'b0) && (w_A >= 16'hF000) && (w_A <= 16'hF5FF) && !r_hrg_port0[2];
 assign w_vram_wea = w_aram_wea && !r_port0[6];
 
 assign w_hrg_addra = (r_hrg_port1[3:0] < 12) ? (r_hrg_port1[3:0] * 1280 + w_A[10:0]) : (r_hrg_port1[1:0] * 256 + w_A[7:0] + 15360);
 assign w_hrg_dina = w_D;
-assign w_hrg_wea = (w_MREQ == 1'b0) && (w_WR == 1'b0) && (w_A >= 16'hF000) && (w_A <= 16'hF5FF) && r_hrg_port0[2];
+assign w_hrg_wea = (r_WAIT == 1'b0) && (w_WR == 1'b0) && (w_A >= 16'hF000) && (w_A <= 16'hF5FF) && r_hrg_port0[2];
 
 assign w_chargen_addra = (r_char_latch << 4) | r_row_latch;
 assign w_chargen_dina = w_D;
-assign w_chargen_wea = (w_MREQ == 1'b0) && (w_WR == 1'b0) && r_port0[3] && r_char_latch[7] && (w_A == 16'hFBFD);
+assign w_chargen_wea = (r_WAIT == 1'b0) && (w_WR == 1'b0) && r_port0[3] && r_char_latch[7] && (w_A == 16'hFBFD);
 
 assign w_mode80_src = r_port0[5];
 assign w_counter_src = r_counter_out;
@@ -671,7 +669,7 @@ assign w_hrg_port1_src_send = r_hrg_port1_src_send;
 
 assign w_rom_addr = r_rom_addr;
 assign w_ram_addr = r_ram_addr;
-assign w_ram_we = r_ram_we && (w_MREQ == 1'b0) && (w_WR == 1'b0);
+assign w_ram_we = r_ram_we && (r_WAIT == 1'b0) && (w_WR == 1'b0);
 assign w_ram_din = w_D;
 
 assign w_high = 1'b1;
