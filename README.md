@@ -82,14 +82,13 @@ I am using Vivado 2025.1, but other editions should also work.  Simply create a 
 
 Use the Vivado Clocking Wizard to generate the clock_generator IP which should output the following clocks:
 - clk_vga (requested: 25.175, actual: 25.17483)
-- clk_cpu (requested: 4.7, actual 4.72005)
+- clk_cpu (requested: 8, actual 8.00089)
 
-NB Unfortunately the clocking wizard cannot achieve 4 MHz, so 4.72 Mhz is the closest that we can achieve cleanly.  Higher speeds are also
-possible, i.e. 8 or 10 Mhz.
+NB Unfortunately the clocking wizard cannot achieve 4 MHz, but dividing the 8 Mhz clock by 2 is very close (4.000445 MHz). Higher speed are also possible, i.e. 10 Mhz from 20 Mhz.
 
 Under project settings define the following configuration flags:
-- CPU_SPEED_HZ = 4_720_050 (or rate chosen for clk_cpu in hertz)
-- CPU_SPEED_MHZ = 4.72005 (or rate chosen for clk_cpu)
+- CPU_SPEED_HZ = 4_000_445 (or rate chosen in hertz)
+- CPU_SPEED_MHZ = 4.000445 (or rate chosen)
 - FDS_SUPPORT = 1 (optional to build the FDS variant which requires SD_CARD_SUPPORT)
 - SD_CARD_SUPPORT = 1 (optional to use an external SD card PMOD for persistent storage instead of BRAM)
 ## SD card use and preparation
@@ -129,7 +128,5 @@ I have tested the SD controller with a variety of SDSC and SDHC cards so please 
 
 # TODO
 The project is still very much in development and at least the following work remains:
-- To improve timing accuracy.  I am currently running the CPU at 4.72 MHz, whereas the original machine ran at only 4 MHz.
 - To implement some of the missing port control flags, e.g. to inhibit VDU output while displaying HRG.
 - To investigate Vivado warnings.
-  

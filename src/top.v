@@ -41,7 +41,7 @@ module top(
  *                                                                              *
  * Vivado Clocking Wizard used to generate clocks:                              *
  *   clk_vga (requested: 25.175, actual: 25.17483)                              *
- *   clk_cpu (requested: 10, actual 10.00000)                                   *
+ *   clk_cpu (requested: 8, actual 8.00089)                                     *
  *                                                                              *
  ********************************************************************************/
 
@@ -54,18 +54,31 @@ debounce #(.DEBOUNCE_LIMIT(20_000 * `CPU_SPEED_MHZ)) debounce_btnU_inst (
 );
 
 wire w_clk_vga;
-wire w_clk_cpu;
+wire w_clk_8mhz;
 wire w_locked;
 
 clock_generator clock_inst (
   // Clock out ports
   .clk_vga(w_clk_vga),     // output clk_vga
-  .clk_cpu(w_clk_cpu),     // output clk_cpu
+  .clk_cpu(w_clk_8mhz),    // output clk_cpu
   // Status and control signals
   .reset(w_reset_button),  // input reset
   .locked(w_locked),       // output locked
  // Clock in ports
   .clk_in1(clk)            // input clk_in
+);
+
+wire w_clk_cpu;
+reg r_clk_4mhz;
+
+// divide ~8 MHz clock to reach ~4 MHz (4.000445 MHz)
+always @(posedge w_clk_8mhz) begin
+  r_clk_4mhz <= ~r_clk_4mhz;
+end
+
+BUFG bufg_inst (
+  .I(r_clk_4mhz),
+  .O(w_clk_cpu)
 );
 
 wire w_cpu_reset;
