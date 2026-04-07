@@ -6,6 +6,8 @@ The Artix 7 itself provides just enough BRAM for 64K of RAM, the necessary ROM f
 For persistent storage I have used this [SD card PMOD](https://digilent.com/reference/pmod/pmodsd/start) from Digilent.  Their smaller [Micro SD card PMOD](https://digilent.com/reference/pmod/pmodmicrosd/start)
 should also work, but I've not tested it.  Alternatively, a smaller BRAM ram disk can be configured to boot without an SD card.
 
+For sound I have used this [AMP2 PMOD](https://digilent.com/reference/pmod/pmodamp2/start) also from Digilent to act as a simple mono speaker. 
+
 [A-Z80](https://github.com/gdevic/A-Z80) created by Goran Devic is used as the Z80 CPU core.
 
 Features:
@@ -91,6 +93,7 @@ Under project settings define the following configuration flags:
 - CPU_SPEED_MHZ = 4.000445 (or rate chosen)
 - FDS_SUPPORT = 1 (optional to build the FDS variant which requires SD_CARD_SUPPORT)
 - SD_CARD_SUPPORT = 1 (optional to use an external SD card PMOD for persistent storage instead of BRAM)
+- AMP2_AUDIO_SUPPORT = 1 (optional to use the AMP2 pmod as a speaker)
 ## SD card use and preparation
 As no FAT filesystem is used care must be taken when writing disk images to the SD card, as specifying the wrong device could **DESTROY** your hard drive!
 

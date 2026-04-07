@@ -24,6 +24,12 @@ module top(
   output cs,
   output sck,
 `endif
+`ifdef AMP2_AUDIO_SUPPORT
+  input [0:0] sw,
+  output ain,
+  output gain,
+  output shutdown,
+`endif
   output [1:0] led,
   output RsTx,
   output [3:0] vgaRed,
@@ -519,6 +525,9 @@ reg [7:0] r_char_latch = 0;
 reg r_key_ready = 1'b0;
 reg r_floppy_sel = 1'b0;
 reg r_side_sel = 1'b0;
+`ifdef AMP2_AUDIO_SUPPORT
+reg r_speaker_level = 1'b0;
+`endif
 
 always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
   if (w_cpu_reset == 1'b0) begin
@@ -546,8 +555,12 @@ always @(posedge w_clk_cpu or negedge w_cpu_reset) begin
           r_port0 <= w_D;
         end
         8'hFD: begin
-          if (!r_port0[4] && !r_port0[3]) begin
-            r_counter <= w_D[4:0];
+          if (!r_port0[3]) begin
+            if (!r_port0[4])
+              r_counter <= w_D[4:0];
+`ifdef AMP2_AUDIO_SUPPORT
+            r_speaker_level <= w_D[6];
+`endif
           end
         end
         8'hFE: begin
@@ -705,5 +718,11 @@ assign w_sio_WR = ~((w_IORQ == 1'b0) && (w_WR == 1'b0) && ((w_A[7:0] & PORT_MASK
 assign w_sio_RD = ~((w_IORQ == 1'b0) && (w_RD == 1'b0) && ((w_A[7:0] & PORT_MASK) == SIO_PORT));
 assign w_sio_CD = w_A[0];
 assign w_sio_D = (w_RD == 1'b1) ? w_D : {8{1'bz}};
+
+`ifdef AMP2_AUDIO_SUPPORT
+assign ain = r_speaker_level;
+assign gain = 1'b0;       // 12dB gain
+assign shutdown = sw[0];  // power off when SW0 is off
+`endif
 
 endmodule
